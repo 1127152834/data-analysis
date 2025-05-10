@@ -1,0 +1,96 @@
+[project]
+name = "tidb-ai-backend"
+version = "0.2.9"
+description = "The Backend Server for TiDB.AI"
+authors = [
+    { name = "wd0517", email = "me@wangdi.ink" },
+    { name = "mini256", email = "minianter@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">= 3.9"
+dependencies = [
+    "fastapi>=0.115.6",
+    "fastapi-cli>=0.0.5",
+    "fastapi-users>=13.0.0",
+    "fastapi-pagination>=0.12.25",
+    "fastapi-users-db-sqlmodel>=0.3.0",
+    "sqlmodel==0.0.19",
+    "pymysql>=1.1.1",
+    "asyncmy>=0.2.9",
+    "tidb-vector>=0.0.14",
+    "alembic>=1.14.0",
+    "pydantic>=2.10.5",
+    # Update Check: https://github.com/pydantic/pydantic/issues/8061
+    "pydantic-settings>=2.3.3",
+    "redis>=5.0.5",
+    "celery>=5.4.0",
+    "flower>=2.0.1",
+    "httpx-oauth>=0.14.1",
+    "uvicorn>=0.30.3",
+    "gunicorn>=22.0.0",
+    "python-dotenv>=1.0.1",
+    "sentry-sdk>=2.5.1",
+    "langfuse>=2.59.1",
+    "langchain-openai>=0.2.9",
+    # Pin ragas to 0.2.6 to avoid async loop error:
+    # https://github.com/explodinggradients/ragas/issues/1819
+    "ragas==0.2.6",
+    "deepeval>=0.21.73",
+    "click>=8.1.7",
+    "tenacity~=8.4.0",
+    "retry>=0.9.2",
+    "deepdiff>=7.0.1",
+    "colorama>=0.4.6",
+    "jinja2>=3.1.4",
+    "pyyaml>=6.0.1",
+    "playwright>=1.45.1",
+    "markdownify>=0.13.1",
+    "pypdf>=4.3.1",
+    "python-docx>=1.1.2",
+    "python-pptx>=1.0.2",
+    "openpyxl>=3.1.5",
+    "llama-index>=0.12.16",
+    "llama-index-llms-openai>=0.3.13",
+    "llama-index-llms-openai-like>=0.3.3",
+    "llama-index-llms-bedrock-converse>=0.4.15",
+    "llama-index-llms-ollama>=0.5.0",
+    "llama-index-llms-google-genai>=0.1.6",
+    "llama-index-llms-azure-openai>=0.3.0",
+    "llama-index-llms-dashscope>=0.3.3",
+    "llama-index-embeddings-ollama>=0.5.0",
+    "llama-index-embeddings-jinaai>=0.4.0",
+    "llama-index-embeddings-cohere>=0.4.0",
+    "llama-index-embeddings-bedrock>=0.4.0",
+    "llama-index-embeddings-azure-openai>=0.3.0",
+    "llama-index-postprocessor-jinaai-rerank>=0.3.0",
+    "llama-index-postprocessor-cohere-rerank>=0.3.0",
+    "llama-index-postprocessor-xinference-rerank>=0.2.0",
+    "llama-index-postprocessor-bedrock-rerank>=0.3.0",
+    "llama-index-llms-vertex>=0.4.2",
+    "socksio>=1.0.0",
+    "dspy>=2.6.21",
+    "litellm>=1.67.4",
+]
+
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "pytest-asyncio>=0.25.3",
+    "ruff>=0.11.2",
+]
+
+# Lint
+
+[tool.ruff.lint]
+ignore = ["E711", "E712", "F811",  "F841"]
+
+# Test
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+asyncio_mode = "auto"
+env_files = ["tests/.env"]

@@ -1,0 +1,50 @@
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/tidb-deploy"
+  data_dir: "/tidb-data"
+
+server_configs:
+  tidb:
+    log.slow-threshold: 300
+  tikv:
+    readpool.storage.use-unified-pool: false
+    readpool.coprocessor.use-unified-pool: true
+  pd:
+    replication.enable-placement-rules: true
+    replication.location-labels: ["host"]
+
+pd_servers:
+  - host: 
+    
+tikv_servers:
+  - host: 
+    port: 20160
+    status_port: 20180
+    config:
+      server.labels: { host: "tikv1" }
+
+tidb_servers:
+  - host: 
+    port: 4000
+    status_port: 10080
+
+tiflash_servers:
+  - host: 
+    tcp_port: 9000
+    http_port: 8123
+    flash_service_port: 3930
+    flash_proxy_port: 20170
+    flash_proxy_status_port: 20292
+    metrics_port: 8234
+    config:
+      logger.level: "info"
+      
+monitoring_servers:
+  - host: 
+    
+grafana_servers:
+  - host: 
+    
+alertmanager_servers:
+  - host: 

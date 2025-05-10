@@ -1,0 +1,17 @@
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+.idea
+
+.env.local
+local-test.sh
+
+# Internal output
+.credentials
+*.stdout
+*.stderr
+screenshots
+.vercel

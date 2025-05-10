@@ -1,0 +1,124 @@
+website:
+  title:
+    default: "TiDB.AI"
+    data_type: str
+    description: "网站标题"
+    client: true
+  description:
+    default: "Knowledge Graph based RAG that built with TiDB Serverless Vector Storage and LlamaIndex"
+    data_type: str
+    description: "网站描述"
+    client: true
+  homepage_title:
+    default: "Ask anything about TiDB"
+    data_type: str
+    description: "主页标题"
+    client: true
+  homepage_example_questions:
+    default:
+      - "什么是深度研究"
+      - "Does TiDB support FOREIGN KEY?"
+      - "Does TiDB support serverless?"
+    data_type: list
+    description: "主页示例问题"
+    client: true
+  homepage_footer_links:
+    default:
+      - text: "Release Notes"
+        href: "https://autoflow.tidb.ai/releases"
+      - text: "Powered by TiDB"
+        href: "https://tidb.cloud/ai"
+      - text: "© 2024 PingCAP"
+        href: "https://pingcap.com"
+    data_type: list
+    description: "主页底部链接"
+    client: true
+  logo_in_dark_mode:
+    default: "https://tidb.ai/tidb-ai-light.svg"
+    data_type: str
+    description: "暗黑模式下的Logo"
+    client: true
+  logo_in_light_mode:
+    default: "https://tidb.ai/tidb-ai.svg"
+    data_type: str
+    description: "明亮模式下的Logo"
+    client: true
+  social_github:
+    default: "https://github.com/pingcap/tidb.ai"
+    data_type: str
+    description: "GitHub链接"
+    client: true
+  social_twitter:
+    default: "https://twitter.com/PingCAP"
+    data_type: str
+    description: "Twitter链接"
+    client: true
+  social_discord:
+    default: "https://discord.gg/XzSW23Jg9p"
+    data_type: str
+    description: "Discord链接"
+    client: true
+  ga_id:
+    default: ""
+    data_type: str
+    description: "Google Analytics ID"
+    client: true
+
+custom_js:
+  custom_js_example_questions:
+    default:
+      - "什么是深度研究"
+      - "Does TiDB support FOREIGN KEY?"
+      - "Does TiDB support serverless?"
+    data_type: list
+    description: "自定义JS中的示例问题"
+    client: true
+  custom_js_button_label:
+    default: "Ask AI"
+    data_type: str
+    description: "自定义JS中的按钮文本"
+    client: true
+  custom_js_button_img_src:
+    default: "https://tidb.ai/tidb-ai-widget.svg"
+    data_type: str
+    description: "自定义JS中的按钮图片"
+    client: true
+  custom_js_logo_src:
+    default: "https://tidb.ai/tidb-ai-widget.svg"
+    data_type: str
+    description: "自定义JS中的Logo"
+    client: true
+
+chat:
+  langfuse_secret_key:
+    default: ""
+    data_type: str
+    description: "Langfuse的密钥"
+    client: false
+  langfuse_public_key:
+    default: ""
+    data_type: str
+    description: "Langfuse的公钥"
+    client: false
+  langfuse_host:
+    default: "https://us.cloud.langfuse.com"
+    data_type: str
+    description: "Langfuse的主机地址"
+    client: false
+  enable_post_verifications:
+    default: true
+    data_type: bool
+    description: "为所有聊天启用发布后验证"
+    client: true
+  enable_post_verifications_for_widgets:
+    default: false
+    data_type: bool
+    description: "为来自JS组件的聊天启用发布后验证"
+    client: true
+
+upload:
+  max_upload_file_size:
+    default: 10485760    # 10 MiB
+    data_type: int
+    description: "上传文件的最大大小(字节)"
+    client: true

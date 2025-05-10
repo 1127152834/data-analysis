@@ -1,0 +1,143 @@
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+ENV/
+.env
+.venv
+env/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# 数据库
+*.db
+*.sqlite3
+*.sqlite
+
+# TiDB相关
+tidb-data/
+
+# 数据文件
+*.csv
+*.dat
+*.efx
+*.gbr
+*.key
+*.pps
+*.ppt
+*.pptx
+*.sdf
+*.tax2010
+*.vcf
+*.xml
+*.parquet
+*.feather
+*.pickle
+*.pkl
+*.json
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+/data/*
+!/data/.gitkeep
+
+# 可以选择不忽略的数据文件
+!data/samples/*
+
+# 大型二进制文件
+*.hdf5
+*.h5
+*.bin
+*.vec
+
+# 系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vs/
+.spyderproject
+.spyproject
+.ropeproject
+.project
+.pydevproject
+.settings/
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 临时文件
+.tmp/
+.temp/
+tmp/
+temp/
+
+# 配置文件
+.env
+config.local.js
+
+# 模型文件（根据需要可以取消注释）
+# *.model
+# *.pt
+# *.h5
+# *.onnx
+
+# 其他
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# 依赖管理
+node_modules/
