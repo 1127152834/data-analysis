@@ -153,7 +153,13 @@ function getFetchInfo (kbId: number, query: string | null): [string | false, () 
     // case 'document':
     //   return ['get', `/api/v1/indexes/${indexName}/chunks/${encodeURIComponent(parsedQuery[1])}/subgraph`];
     case 'entity':
-      return [`api.knowledge-bases.${kbId}.graph.entity-subgraph?id=${param}`, () => getEntitySubgraph(kbId, parseInt(param))];
+      // 处理可能带有连字符的实体ID
+      let entityId = param;
+      if (param.includes('-')) {
+        // 如果ID是"knowledge_base_id-entity_id"格式，取"-"后面的部分
+        entityId = param.split('-')[1];
+      }
+      return [`api.knowledge-bases.${kbId}.graph.entity-subgraph?id=${param}`, () => getEntitySubgraph(kbId, parseInt(entityId))];
     case 'sample-question':
       return [`api.knowledge-bases.${kbId}.graph.search?query=${param}`, () => search(kbId, { query: param })];
     case 'message-subgraph':

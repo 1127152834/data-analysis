@@ -46,6 +46,7 @@ from app.api.admin_routes import (
     semantic_cache as admin_semantic_cache,
     langfuse as admin_langfuse,
     user as admin_user,
+    images as admin_images,
 )
 from app.api.admin_routes.debug.routes import router as admin_debug_router
 from app.api.admin_routes.evaluation import (
@@ -103,6 +104,7 @@ api_router.include_router(
     admin_site_settings.router, tags=["admin/site_settings"]
 )  # 站点设置
 api_router.include_router(admin_upload.router, tags=["admin/upload"])  # 文件上传
+api_router.include_router(admin_images.router, tags=["admin/images"])  # 图片上传
 
 # 知识库管理相关路由
 api_router.include_router(

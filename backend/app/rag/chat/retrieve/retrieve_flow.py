@@ -63,7 +63,7 @@ class RetrieveFlow:
             knowledge_bases or self.engine_config.get_knowledge_bases(self.db_session)
         )
         self.knowledge_base_ids = [kb.id for kb in self.knowledge_bases]
-        
+
         # 初始化数据库查询管理器
         self.db_query_manager = None
         if self.engine_config.database.enabled:

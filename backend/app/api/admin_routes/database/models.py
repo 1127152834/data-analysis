@@ -52,6 +52,7 @@ class DatabaseConnectionUpdate(BaseModel):
     config: Optional[Dict[str, Any]] = Field(None, description="连接配置")
     read_only: Optional[bool] = Field(None, description="是否只读模式")
     test_connection: bool = Field(False, description="是否测试连接")
+    database_type: Optional[DatabaseType] = Field(None, description="数据库类型")
 
 
 class DatabaseConnectionDetail(BaseModel):
@@ -69,7 +70,14 @@ class DatabaseConnectionDetail(BaseModel):
     connection_status: ConnectionStatus
     last_connected_at: Optional[datetime]
     metadata_updated_at: Optional[datetime]
-    metadata_summary: Optional[Dict[str, Any]]  # 元数据摘要信息
+    metadata_summary: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            'database': '',
+            'table_count': 0,
+            'tables': [],
+            'has_more_tables': False
+        }
+    )  # 元数据摘要信息，使用default_factory提供默认值
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     
@@ -88,8 +96,15 @@ class DatabaseConnectionDetail(BaseModel):
                 if 'password' in key.lower() or 'secret' in key.lower() or 'key' in key.lower():
                     sanitized_config[key] = '******'  # 用星号替换敏感信息
         
-        # 创建元数据摘要
-        metadata_summary = None
+        # 创建元数据摘要 - 使用默认空对象
+        metadata_summary = {
+            'database': '',
+            'table_count': 0,
+            'tables': [],
+            'has_more_tables': False
+        }
+        
+        # 尝试从缓存生成摘要
         if hasattr(obj, 'metadata_cache') and obj.metadata_cache:
             try:
                 metadata_summary = {
@@ -99,12 +114,13 @@ class DatabaseConnectionDetail(BaseModel):
                     'has_more_tables': len(obj.metadata_cache.get('tables', {})) > 10,
                 }
             except Exception:
+                # 如果解析失败，使用错误信息
                 metadata_summary = {'error': 'Failed to parse metadata'}
         
         # 创建新对象并设置属性
         instance = super().from_orm(obj)
         instance.config = sanitized_config
-        instance.metadata_summary = metadata_summary
+        instance.metadata_summary = metadata_summary  # 确保总是设置metadata_summary
         return instance
 
 
@@ -118,6 +134,7 @@ class DatabaseConnectionList(BaseModel):
     name: str
     description: str
     database_type: DatabaseType
+    config: Dict[str, Any]  # 添加config字段，确保与前端期望的结构一致
     connection_status: ConnectionStatus
     read_only: bool
     last_connected_at: Optional[datetime]

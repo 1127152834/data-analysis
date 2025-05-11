@@ -176,7 +176,7 @@ class ChatEngineConfig(BaseModel):
     
     # 向量搜索相关的配置
     vector_search: VectorSearchOption = VectorSearchOption()
-    
+
     # 数据库查询相关的配置
     database: DatabaseOption = DatabaseOption()
 

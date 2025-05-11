@@ -37,8 +37,18 @@ export function LinkDetails ({
     };
   }, [network, relationship.source, relationship.target]);
 
+  // 处理带连字符的ID (例如: "60001-600")
+  const relationshipId = useMemo(() => {
+    const id = String(relationship.id);
+    if (id.includes('-')) {
+      // 如果是形如"60001-600"的格式，取"-"后面的部分
+      return Number(id.split('-')[1]);
+    }
+    return Number(id);
+  }, [relationship.id]);
+
   const [editing, setEditing] = useState(false);
-  const latestData = useRemote(relationship, loadRelationship, knowledgeBaseId, Number(relationship.id));
+  const latestData = useRemote(relationship, loadRelationship, knowledgeBaseId, relationshipId);
   const dirtyRelationship = useDirtyRelationship(knowledgeBaseId, relationship.id);
 
   relationship = latestData.data;

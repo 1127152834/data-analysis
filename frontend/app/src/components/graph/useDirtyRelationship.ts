@@ -1,5 +1,5 @@
 import { updateRelationship } from '@/api/graph';
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useAction } from './action';
 import { type Relationship } from './utils';
 import type { JsonFieldInstance } from './components/JsonField';
@@ -9,6 +9,16 @@ export function useDirtyRelationship (kbId: number, id: any) {
   const weightRef = useRef<HTMLInputElement>(null);
   const metaRef = useRef<JsonFieldInstance | null>(null);
 
+  // 处理带连字符的ID (例如: "60001-600")
+  const relationshipId = useMemo(() => {
+    const idStr = String(id);
+    if (idStr.includes('-')) {
+      // 如果是形如"60001-600"的格式，取"-"后面的部分
+      return Number(idStr.split('-')[1]);
+    }
+    return Number(idStr);
+  }, [id]);
+
   const { loading: saving, reset: resetSave, run: save, data: saveReturns, error: saveError, pending: savePending } = useAction(async () => {
     const current = getCurrent();
 
@@ -16,7 +26,7 @@ export function useDirtyRelationship (kbId: number, id: any) {
       throw new Error('bad editor state');
     }
 
-    return await updateRelationship(kbId, id, current);
+    return await updateRelationship(kbId, relationshipId, current);
   });
 
   const reset = (relationship: Relationship) => {

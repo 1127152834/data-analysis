@@ -90,32 +90,50 @@ function AdvancedChunkingConfig () {
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="text-sm font-medium text-muted-foreground">纯文本 (text/plain)</div>
-        <SplitterRuleConfig rule="text/plain" />
+        <SplitterRuleConfig rule={"text/plain" as const} />
       </div>
       <div className="space-y-2">
         <div className="text-sm font-medium text-muted-foreground">Markdown (text/markdown)</div>
-        <SplitterRuleConfig rule="text/markdown" />
+        <SplitterRuleConfig rule={"text/markdown" as const} />
       </div>
     </div>
   );
 }
 
-function SplitterRuleConfig ({ rule }: { rule: keyof KnowledgeBaseChunkingConfigAdvanced['rules'] }) {
+function SplitterRuleConfig ({ rule }: { rule: "text/plain" | "text/markdown" }) {
   const name = `value.rules.${rule}` as const;
   return (
     <div className="space-y-4">
       <FormField<{ value: KnowledgeBaseChunkingConfigAdvanced }, typeof name>
         name={name}
-        render={(field, form) => (
+        render={(field, form) => {
+          // 添加默认值以解决可能的 undefined 问题
+          const defaultValue = rule === 'text/markdown' 
+            ? {
+                splitter: 'MarkdownSplitter' as const,
+                splitter_config: switchSplitter('MarkdownSplitter')
+              }
+            : {
+                splitter: 'SentenceSplitter' as const,
+                splitter_config: switchSplitter('SentenceSplitter')
+              };
+          
+          const currentValue = field.state.value || defaultValue;
+          
+          return (
           <>
             <Select
               name={name}
-              value={field.state.value.splitter}
+              value={currentValue.splitter}
               onValueChange={value => {
-                field.setValue(({
-                  splitter: value,
-                  splitter_config: switchSplitter(value as never),
-                } as KnowledgeBaseChunkingSplitterRule));
+                const newSplitter = value as 'SentenceSplitter' | 'MarkdownSplitter';
+                // @ts-ignore - 类型系统限制问题
+                field.setValue({
+                  splitter: newSplitter,
+                  splitter_config: newSplitter === 'SentenceSplitter' 
+                    ? switchSplitter('SentenceSplitter') 
+                    : switchSplitter('MarkdownSplitter'),
+                });
               }}
             >
               <SelectTrigger>
@@ -127,37 +145,38 @@ function SplitterRuleConfig ({ rule }: { rule: keyof KnowledgeBaseChunkingConfig
               </SelectContent>
             </Select>
 
-            {field.state.value.splitter === 'SentenceSplitter' && (
+            {currentValue.splitter === 'SentenceSplitter' && (
               <div className="pl-4 grid grid-cols-3 gap-4">
-                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_size`} label="分块大小">
+                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_size` as any} label="分块大小">
                   <FormInputLayout suffix="tokens">
                     <FormInput type="number" min={1} step={1} />
                   </FormInputLayout>
                 </advancedFieldLayout.Basic>
-                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_overlap`} label="分块重叠">
+                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_overlap` as any} label="分块重叠">
                   <FormInputLayout suffix="tokens">
                     <FormInput type="number" min={0} step={1} />
                   </FormInputLayout>
                 </advancedFieldLayout.Basic>
-                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.paragraph_separator`} label="段落分隔符">
+                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.paragraph_separator` as any} label="段落分隔符">
                   <FormInput />
                 </advancedFieldLayout.Basic>
               </div>
             )}
-            {field.state.value.splitter === 'MarkdownSplitter' && (
+            {currentValue.splitter === 'MarkdownSplitter' && (
               <div className="pl-4 grid grid-cols-3 gap-4">
-                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_size`} label="分块大小">
+                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_size` as any} label="分块大小">
                   <FormInputLayout suffix="tokens">
                     <FormInput type="number" min={1} step={1} />
                   </FormInputLayout>
                 </advancedFieldLayout.Basic>
-                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_header_level`} label="分块标题级别">
+                <advancedFieldLayout.Basic name={`value.rules.${rule}.splitter_config.chunk_header_level` as any} label="分块标题级别">
                   <FormInput type="number" min={1} max={6} step={1} />
                 </advancedFieldLayout.Basic>
               </div>
             )}
           </>
-        )}
+          );
+        }}
       />
     </div>
   );

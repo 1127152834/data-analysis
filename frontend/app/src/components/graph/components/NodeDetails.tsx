@@ -35,11 +35,27 @@ export function NodeDetails ({
     return Array.from(network.nodeNeighborhoods(entity.id) ?? []).map(id => network.node(id)!);
   }, [network, entity.id]);
 
-  const latestData = useRemote(entity, loadEntity, knowledgeBaseId, Number(entity.id));
+  // 处理带连字符的ID (例如: "60001-600")
+  const entityId = useMemo(() => {
+    const id = String(entity.id);
+    if (id.includes('-')) {
+      // 如果是形如"60001-600"的格式，取"-"后面的部分
+      return Number(id.split('-')[1]);
+    }
+    return Number(id);
+  }, [entity.id]);
+
+  console.log('entity', entity);
+
+  console.log('knowledgeBaseId', knowledgeBaseId);
+
+  const latestData = useRemote(entity, loadEntity, knowledgeBaseId, entityId);
   const dirtyEntity = useDirtyEntity(knowledgeBaseId, entity.id);
 
   // dirty set
-  entity = latestData.data;
+  // entity = latestData.data;
+
+  console.log('entity', entity);
 
   const handleSave = () => {
     void dirtyEntity.save()
@@ -66,7 +82,6 @@ export function NodeDetails ({
 
   const busy = dirtyEntity.saving || latestData.revalidating;
   const controlsDisabled = !editing || busy;
-
   return (
     <div className="p-4 space-y-4 h-full overflow-y-auto">
       <div className="flex items-center justify-between">

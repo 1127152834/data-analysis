@@ -8,13 +8,13 @@ export default function Page () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Models' },
-          { title: 'LLMs', docsUrl: 'https://autoflow.tidb.ai/llm' },
+          { title: '模型' },
+          { title: '大语言模型', docsUrl: 'https://autoflow.tidb.ai/llm' },
         ]}
       />
       <NextLink href="/llms/create">
         <PlusIcon className="size-4" />
-        New LLM
+        创建大语言模型
       </NextLink>
       <LLMsTable />
     </>

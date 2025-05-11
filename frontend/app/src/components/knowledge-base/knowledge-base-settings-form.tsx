@@ -1,6 +1,6 @@
 'use client';
 
-import { type KnowledgeBase, type KnowledgeBaseIndexMethod, updateKnowledgeBase } from '@/api/knowledge-base';
+import { type KnowledgeBase, type KnowledgeBaseIndexMethod, type UpdateKnowledgeBaseParams, updateKnowledgeBase } from '@/api/knowledge-base';
 import { EmbeddingModelSelect, LLMSelect } from '@/components/form/biz';
 import { FormInput, FormSwitch, FormTextarea } from '@/components/form/control-widget';
 import { formFieldLayout } from '@/components/form/field-layout';
@@ -28,7 +28,37 @@ export function KnowledgeBaseSettingsForm ({ knowledgeBase }: { knowledgeBase: K
       onUpdate={async (data, path) => {
         if (['name', 'description', 'chunking_config'].includes(path[0] as never)) {
           const partial = shallowPick(data, path as never);
-          await updateKnowledgeBase(knowledgeBase.id, partial);
+          
+          // 处理chunking_config
+          if (path[0] === 'chunking_config') {
+            if (partial.chunking_config === null) {
+              // 如果chunking_config是null，转换为undefined
+              (partial as any).chunking_config = undefined;
+            } else if (partial.chunking_config?.mode === 'advanced') {
+              // 确保高级模式下有rules字段
+              if (!partial.chunking_config.rules) {
+                partial.chunking_config.rules = {
+                  'text/plain': {
+                    splitter: 'SentenceSplitter',
+                    splitter_config: {
+                      chunk_size: 1024,
+                      chunk_overlap: 200,
+                      paragraph_separator: '\\n\\n',
+                    },
+                  },
+                  'text/markdown': {
+                    splitter: 'MarkdownSplitter',
+                    splitter_config: {
+                      chunk_size: 1200,
+                      chunk_header_level: 2,
+                    },
+                  },
+                };
+              }
+            }
+          }
+          
+          await updateKnowledgeBase(knowledgeBase.id, partial as UpdateKnowledgeBaseParams);
           startTransition(() => {
             router.refresh();
             mutateKnowledgeBases();

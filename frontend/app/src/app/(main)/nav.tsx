@@ -17,7 +17,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/compone
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useHref } from '@/components/use-href';
-import { ActivitySquareIcon, AlertTriangleIcon, BinaryIcon, BotMessageSquareIcon, BrainCircuitIcon, CircleDotIcon, CogIcon, ComponentIcon, FileLineChart, HomeIcon, KeyRoundIcon, LibraryBigIcon, LibraryIcon, LogInIcon, MessageCircleQuestionIcon, MessagesSquareIcon, ShuffleIcon } from 'lucide-react';
+import { ActivitySquareIcon, AlertTriangleIcon, BinaryIcon, BotMessageSquareIcon, BrainCircuitIcon, CircleDotIcon, CogIcon, ComponentIcon, DatabaseIcon, FileLineChart, HomeIcon, KeyRoundIcon, LibraryBigIcon, LibraryIcon, LogInIcon, MessageCircleQuestionIcon, MessagesSquareIcon, ShuffleIcon } from 'lucide-react';
 import NextLink from 'next/link';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -96,6 +96,7 @@ function NavContent () {
             { href: '/reranker-models', title: '重排序模型', icon: ShuffleIcon },
           ],
         },
+        { href: '/database', title: '数据库管理', icon: DatabaseIcon },
         { href: '/feedbacks', title: '反馈', icon: MessageCircleQuestionIcon },
         {
           parent: true,

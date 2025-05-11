@@ -18,6 +18,10 @@ import { z, type ZodType } from 'zod';
 import { getErrorMessage as getErrorMessageBeta } from '@/lib/errors';
 import { Form as FormBeta } from '@/components/ui/form.beta';
 import { useForm as useFormTanstack } from '@tanstack/react-form';
+import { ImageUploadInput } from '@/components/form/widgets/ImageUploadInput';
+
+// 图片URL的正则表达式，用于判断值是否可能是图片URL
+const IMAGE_URL_REGEX = /\.(jpg|jpeg|png|gif|svg|webp)($|\?)/i;
 
 export interface SettingsFieldProps {
   name: string;
@@ -106,6 +110,12 @@ export function SettingsField ({ name, item, arrayItemSchema, objectSchema, onCh
     },
   });
 
+  // 判断是否是图片URL字段
+  const isImageField = item.data_type === 'str' && 
+    (item.name.includes('logo') || item.name.includes('image') || 
+     item.name.includes('img') || item.name.includes('icon')) ||
+    (typeof item.value === 'string' && IMAGE_URL_REGEX.test(item.value));
+
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const Control = useCallback(({ field: { ...props } }: { field: ControllerRenderProps }) => {
     let el: ReactNode;
@@ -121,7 +131,12 @@ export function SettingsField ({ name, item, arrayItemSchema, objectSchema, onCh
           el = <Input type="number" {...props} placeholder={String(item.default)} />;
           break;
         case 'str':
+          // 如果是图片URL字段，使用图片上传控件
+          if (isImageField) {
+            el = <ImageUploadInput {...props} />;
+          } else {
           el = <Input {...props} placeholder={item.default} />;
+          }
           break;
         case 'bool':
           el = <Switch className="block" {...props} onChange={undefined} checked={props.value} onCheckedChange={props.onChange} />;
@@ -137,7 +152,7 @@ export function SettingsField ({ name, item, arrayItemSchema, objectSchema, onCh
         {el}
       </FormControl>
     );
-  }, [item.default, item.data_type, children]);
+  }, [item.default, item.data_type, children, isImageField]);
 
   const handleSubmit = form.handleSubmit(async data => {
     try {

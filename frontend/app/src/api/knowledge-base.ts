@@ -32,6 +32,7 @@ export interface CreateKnowledgeBaseParams {
 export interface UpdateKnowledgeBaseParams {
   name?: string;                        // 知识库名称
   description?: string | null;          // 知识库描述
+  chunking_config?: KnowledgeBaseChunkingConfig; // 分块配置
 }
 
 /**
@@ -128,7 +129,7 @@ export type KnowledgeBaseChunkingConfigGeneral = {
  */
 export type KnowledgeBaseChunkingConfigAdvanced = {
   mode: 'advanced'                     // 高级模式
-  rules: {                            // 不同文件类型的分块规则
+  rules?: {                            // 不同文件类型的分块规则 (设为可选)
     'text/plain': KnowledgeBaseChunkingSplitterRule;
     'text/markdown': KnowledgeBaseChunkingSplitterRule
   }
@@ -179,7 +180,7 @@ export const knowledgeBaseChunkingConfigSchema = z.discriminatedUnion('mode', [
     rules: z.object({
       'text/plain': knowledgeBaseChunkingSplitterRuleSchema,
       'text/markdown': knowledgeBaseChunkingSplitterRuleSchema,
-    }),
+    }).optional(), // 添加optional()使字段变为可选
   }),
 ]) satisfies z.ZodType<KnowledgeBaseChunkingConfig, any, any>;
 

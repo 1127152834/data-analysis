@@ -8,13 +8,13 @@ export default function Page () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Models' },
-          { title: 'Reranker Models', docsUrl: 'https://autoflow.tidb.ai/reranker-model' },
+          { title: '模型' },
+          { title: '重排序模型', docsUrl: 'https://autoflow.tidb.ai/reranker-model' },
         ]}
       />
       <NextLink href="/reranker-models/create">
         <PlusIcon className="size-4" />
-        New Reranker Model
+        创建重排序模型
       </NextLink>
       <RerankerModelsTable />
     </>
