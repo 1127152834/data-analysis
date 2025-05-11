@@ -35,6 +35,7 @@ from app.api.admin_routes.reranker_model.routes import (
     router as admin_reranker_model_router,
 )
 from app.api.admin_routes.chat.routes import router as admin_user_router
+from app.api.admin_routes.database.routes import router as admin_database_router
 from app.api.admin_routes import (
     chat_engine as admin_chat_engine,
     feedback as admin_feedback,
@@ -134,6 +135,9 @@ api_router.include_router(
 api_router.include_router(
     admin_reranker_model_router, tags=["admin/reranker_model"]
 )  # 重排序模型管理
+
+# 数据库管理路由
+api_router.include_router(admin_database_router, tags=["admin/database"])  # 数据库连接管理
 
 # 监控和分析路由
 api_router.include_router(

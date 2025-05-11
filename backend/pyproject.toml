@@ -70,6 +70,11 @@ dependencies = [
     "socksio>=1.0.0",
     "dspy>=2.6.21",
     "litellm>=1.67.4",
+    # 数据库连接器依赖
+    "pymongo>=4.6.2",
+    "psycopg2-binary>=2.9.9",  # 使用binary版本避免编译问题
+    "cx_Oracle>=8.3.0",
+    "pyodbc>=5.1.0",
 ]
 
 
