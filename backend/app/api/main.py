@@ -6,6 +6,7 @@ from app.api.routes import (
     api_key,
     feedback,
     document,
+    chunks,
 )
 from app.api.admin_routes.knowledge_base.routes import (
     router as admin_knowledge_base_router,
@@ -81,6 +82,7 @@ api_router.include_router(user.router, tags=["user"])  # 用户信息
 api_router.include_router(api_key.router, tags=["auth"])  # API密钥管理
 api_router.include_router(document.router, tags=["documents"])  # 文档管理
 api_router.include_router(retrieve_routes.router, tags=["retrieve"])  # 检索功能
+api_router.include_router(chunks.router, tags=["chunks"])  # 文本块功能
 
 # =============================================================
 # 管理端API路由

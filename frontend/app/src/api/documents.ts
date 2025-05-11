@@ -112,6 +112,18 @@ export async function listDocuments ({ page = 1, size = 10, knowledge_base_id, s
 }
 
 /**
+ * 获取单个文档的详细信息
+ * @param id 文档ID
+ * @returns 返回Promise，包含文档详情
+ */
+export async function getDocument(id: number): Promise<Document> {
+  return await fetch(requestUrl(`/api/v1/admin/documents/${id}`), {
+    headers: await authenticationHeaders(),
+  })
+    .then(handleResponse(documentSchema));
+}
+
+/**
  * MIME类型接口
  */
 export interface MimeType {

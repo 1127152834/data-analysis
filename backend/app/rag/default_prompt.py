@@ -126,13 +126,13 @@ The prerequisite questions and their relevant knowledge for the user's main ques
 ---------------------
 
 Task:
-Given the conversation between the Human and Assistant, along with the follow-up message from the Human, and the provided prerequisite questions and relevant knowledge, refine the Human’s follow-up message into a standalone, detailed question.
+Given the conversation between the Human and Assistant, along with the follow-up message from the Human, and the provided prerequisite questions and relevant knowledge, refine the Human's follow-up message into a standalone, detailed question.
 
 Instructions:
 1. Focus on the latest query from the Human, ensuring it is given the most weight.
 2. Incorporate Key Information:
   - Use the prerequisite questions and their relevant knowledge to add specific details to the follow-up question.
-  - Replace ambiguous terms or references in the follow-up question with precise information from the provided knowledge. Example: Replace “latest version” with the actual version number mentioned in the knowledge.
+  - Replace ambiguous terms or references in the follow-up question with precise information from the provided knowledge. Example: Replace "latest version" with the actual version number mentioned in the knowledge.
 3. Utilize Conversation Context:
   - Incorporate relevant context and background information from the conversation history to enhance the question's specificity.
 4. Optimize for Retrieval:
@@ -206,14 +206,19 @@ Use markdown footnote syntax (for example: [^1]) to indicate sources you used.
 Each footnote must correspond to a unique source. Do not use the same source for multiple footnotes.
 
 ### Examples of Correct Footnote Usage (no the unique sources and diverse sources):
-[^1]: [TiDB Overview | PingCAP Docs](https://docs.pingcap.com/tidb/stable/overview)
-[^2]: [TiDB Architecture | PingCAP Docs](https://docs.pingcap.com/tidb/stable/architecture)
+<!-- 格式: knowledge://chunk/id/{块ID} -->
+[^1]: [TiDB 概览](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241414)
+[^2]: [TiDB 架构](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241415)
 
 ### Examples of Incorrect Footnote Usage (Avoid duplicating the same source for multiple footnotes):
-[^1]: [TiDB Introduction | PingCAP Docs](https://docs.pingcap.com/tidb/v5.4/overview)
-[^2]: [TiDB Introduction | PingCAP Docs](https://docs.pingcap.com/tidb/v5.4/overview)
-[^3]: [TiDB Introduction | PingCAP Docs](https://docs.pingcap.com/tidb/dev/overview)
-[^4]: [TiDB Introduction | PingCAP Docs](https://docs.pingcap.com/tidb/stable/overview)
+[^1]: [TiDB 概览](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241416)
+[^2]: [TiDB 概览](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241417)
+[^3]: [TiDB 概览](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241418)
+[^4]: [TiDB 概览](knowledge://chunk/id/9cdb3cce42ae4c6ab6ce2221a2241419)
+
+<!-- 注意：系统支持一种格式: 
+knowledge://chunk/id/{块ID} - ID格式（推荐）
+-->
 
 ---------------------
 

@@ -16,14 +16,7 @@ export function SiteHeaderLargeScreen ({ setting }: { setting: PublicWebsiteSett
     <div className="fixed top-0 right-2 md:top-4 md:right-4 z-10">
       <div className="flex gap-2 items-center">
         <SidebarTrigger className="md:hidden" />
-        <SiteHeaderActions
-          className="flex h-fit"
-          social={{
-            twitter: setting.social_twitter,
-            github: setting.social_github,
-            discord: setting.social_discord,
-          }}
-        />
+        <SiteHeaderActions className="flex h-fit" />
       </div>
     </div>
   );

@@ -286,6 +286,7 @@ export async function getKnowledgeBaseDocumentChunks (id: number, documentId: nu
     .then(handleResponse(knowledgeGraphDocumentChunkSchema.array()));
 }
 
+
 /**
  * 获取知识库中指定文档的详情
  * @param id 知识库ID

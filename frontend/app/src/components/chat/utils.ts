@@ -27,7 +27,7 @@ export function parseHref (source: ChatMessageSource): { href: string, download?
   } else if (source.source_uri.startsWith('uploads/')) {
     return { href: `/api/v1/documents/${source.id}/download`, download: source.source_uri.slice(source.source_uri.lastIndexOf('/') + 1) };
   } else {
-    return { href: 'javascript:void(0)' };
+    return { href: `/document/${source.id}/view`, target: '_blank' };
   }
 }
 

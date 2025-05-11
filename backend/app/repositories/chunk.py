@@ -38,6 +38,42 @@ class ChunkRepo(BaseRepo):
             select(self.model_cls).where(self.model_cls.document_id == document_id)
         ).all()
 
+    def get_chunk_by_hash(self, session: Session, document_id: int, chunk_hash: str):
+        """
+        通过hash查找特定文档中的chunk
+        
+        Args:
+            session: 数据库会话
+            document_id: 文档ID
+            chunk_hash: chunk的哈希值
+            
+        Returns:
+            匹配的chunk对象，如果未找到则返回None
+        """
+        return session.exec(
+            select(self.model_cls).where(
+                self.model_cls.document_id == document_id,
+                self.model_cls.hash == chunk_hash
+            )
+        ).first()
+        
+    def get_chunk_by_hash_only(self, session: Session, chunk_hash: str):
+        """
+        仅通过hash查找chunk（不限定文档ID）
+        
+        Args:
+            session: 数据库会话
+            chunk_hash: chunk的哈希值
+            
+        Returns:
+            匹配的chunk对象，如果未找到则返回None
+        """
+        return session.exec(
+            select(self.model_cls).where(
+                self.model_cls.hash == chunk_hash
+            )
+        ).first()
+
     def fetch_by_document_ids(self, session: Session, document_ids: list[int]):
         return session.exec(
             select(self.model_cls).where(self.model_cls.document_id.in_(document_ids))

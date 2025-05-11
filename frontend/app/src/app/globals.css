@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 导入Markdown样式 */
+@import '../styles/markdown.css';
+
 @layer base {
   :root {
     --header-height: 3rem;

@@ -699,7 +699,7 @@ class ChatFlow:
                 event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
                 payload=ChatStreamMessagePayload(
                     state=ChatMessageSate.GENERATE_ANSWER,
-                    display="使用AI生成精确答案",
+                    display="使用大模型生成精确答案",
                 ),
             )
             # 流式输出回答文本
