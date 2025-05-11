@@ -23,6 +23,7 @@ from app.rag.retrievers.knowledge_graph.schema import (
 )
 from app.rag.retrievers.chunk.fusion_retriever import ChunkFusionRetriever
 from app.repositories import document_repo
+from app.rag.chat.retrieve.database_query import DatabaseQueryManager, DatabaseQueryResult
 
 dispatcher = get_dispatcher(__name__)
 logger = logging.getLogger(__name__)
@@ -62,21 +63,61 @@ class RetrieveFlow:
             knowledge_bases or self.engine_config.get_knowledge_bases(self.db_session)
         )
         self.knowledge_base_ids = [kb.id for kb in self.knowledge_bases]
+        
+        # 初始化数据库查询管理器
+        self.db_query_manager = None
+        if self.engine_config.database.enabled:
+            self.db_query_manager = DatabaseQueryManager(
+                db_session=self.db_session,
+                engine_config=self.engine_config,
+                llm=self._llm,
+            )
 
-    def retrieve(self, user_question: str) -> List[NodeWithScore]:
+    def retrieve(self, user_question: str) -> Tuple[List[NodeWithScore], List[DatabaseQueryResult]]:
+        """
+        检索包括知识库文档和数据库查询结果
+        
+        Args:
+            user_question: 用户问题
+            
+        Returns:
+            包含知识库文档节点和数据库查询结果的元组
+        """
+        knowledge_graph_context = ""
+        
         if self.engine_config.refine_question_with_kg:
-            # 1. Retrieve Knowledge graph related to the user question.
+            # 1. 检索与用户问题相关的知识图谱
             _, knowledge_graph_context = self.search_knowledge_graph(user_question)
 
-            # 2. Refine the user question using knowledge graph and chat history.
+            # 2. 使用知识图谱和聊天历史优化用户问题
             self._refine_user_question(user_question, knowledge_graph_context)
 
-        # 3. Search relevant chunks based on the user question.
-        return self.search_relevant_chunks(user_question=user_question)
+        # 3. 基于用户问题搜索相关文本块
+        nodes = self.search_relevant_chunks(user_question=user_question)
+        
+        # 4. 执行数据库查询
+        db_results = []
+        if self.engine_config.database.enabled and self.db_query_manager:
+            try:
+                db_results = self.db_query_manager.query_databases(user_question)
+                logger.debug(f"数据库查询完成，获得 {len(db_results)} 条结果")
+            except Exception as e:
+                logger.error(f"执行数据库查询时出错: {str(e)}")
+                
+        return nodes, db_results
 
-    def retrieve_documents(self, user_question: str) -> List[DBDocument]:
-        nodes = self.retrieve(user_question)
-        return self.get_documents_from_nodes(nodes)
+    def retrieve_documents(self, user_question: str) -> Tuple[List[DBDocument], List[DatabaseQueryResult]]:
+        """
+        检索文档和数据库查询结果
+        
+        Args:
+            user_question: 用户问题
+            
+        Returns:
+            包含文档和数据库查询结果的元组
+        """
+        nodes, db_results = self.retrieve(user_question)
+        return self.get_documents_from_nodes(nodes), db_results
 
     def search_knowledge_graph(
         self, user_question: str
@@ -152,6 +193,9 @@ class RetrieveFlow:
         return retriever.retrieve(QueryBundle(user_question))
 
     def get_documents_from_nodes(self, nodes: List[NodeWithScore]) -> List[DBDocument]:
+        if not nodes:
+            return []
+            
         document_ids = [n.node.metadata["document_id"] for n in nodes]
         documents = document_repo.fetch_by_ids(self.db_session, document_ids)
         # Keep the original order of document ids, which is sorted by similarity.

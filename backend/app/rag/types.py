@@ -44,5 +44,6 @@ class ChatMessageSate(int, enum.Enum):
     KG_RETRIEVAL = 2
     REFINE_QUESTION = 3
     SEARCH_RELATED_DOCUMENTS = 4
-    GENERATE_ANSWER = 5
+    DATABASE_QUERY = 5
+    GENERATE_ANSWER = 6
     FINISHED = 9

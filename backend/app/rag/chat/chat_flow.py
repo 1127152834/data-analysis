@@ -41,6 +41,7 @@ from app.rag.chat.config import ChatEngineConfig  # 聊天引擎配置类
 
 # 导入检索流程和数据结构
 from app.rag.chat.retrieve.retrieve_flow import SourceDocument, RetrieveFlow  # 检索流程和源文档模型
+from app.rag.chat.retrieve.database_query import DatabaseQueryResult  # 数据库查询结果模型
 
 # 导入流式协议相关组件
 from app.rag.chat.stream_protocol import (
@@ -341,8 +342,8 @@ class ChatFlow:
                 )
                 return None, []
 
-        # 步骤5: 使用优化后的问题搜索相关的文档块
-        relevant_chunks = yield from self._search_relevance_chunks(
+        # 步骤5: 使用优化后的问题搜索相关的文档块和执行数据库查询
+        relevant_chunks, db_results = yield from self._search_relevance_chunks(
             user_question=refined_question
         )
 
@@ -351,6 +352,7 @@ class ChatFlow:
             user_question=refined_question,
             knowledge_graph_context=knowledge_graph_context,
             relevant_chunks=relevant_chunks,
+            db_results=db_results,
         )
 
         # 步骤7: 完成聊天，保存回答和相关信息
@@ -602,15 +604,15 @@ class ChatFlow:
 
     def _search_relevance_chunks(
         self, user_question: str
-    ) -> Generator[ChatEvent, None, List[NodeWithScore]]:
+    ) -> Generator[ChatEvent, None, Tuple[List[NodeWithScore], List[DatabaseQueryResult]]]:
         """
-        搜索与问题最相关的文档块
+        搜索与问题最相关的文档块和执行数据库查询
         
         参数:
             user_question: 用户问题（可能是已重写的）
             
         返回:
-            生成器，最终产生带有相关度分数的文档节点列表
+            生成器，最终产生带有相关度分数的文档节点列表和数据库查询结果的元组
         """
         # 使用追踪管理器记录相关文档搜索的性能
         with self._trace_manager.span(
@@ -625,32 +627,46 @@ class ChatFlow:
                 ),
             )
 
-            # 调用检索流程搜索相关文档块
-            relevance_chunks = self.retrieve_flow.search_relevant_chunks(user_question)
+            # 调用检索流程搜索相关文档块和执行数据库查询
+            relevance_chunks, db_results = self.retrieve_flow.retrieve(user_question)
+
+            # 如果有数据库查询结果，显示数据库查询提示
+            if db_results and len(db_results) > 0:
+                yield ChatEvent(
+                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                    payload=ChatStreamMessagePayload(
+                        state=ChatMessageSate.DATABASE_QUERY,
+                        display="执行数据库查询",
+                        context={"db_results_count": len(db_results)},
+                    ),
+                )
 
             # 记录追踪结果
             span.end(
                 output={
                     "relevance_chunks": relevance_chunks,
+                    "db_results_count": len(db_results) if db_results else 0,
                 }
             )
 
-            # 返回相关文档块
-            return relevance_chunks
+            # 返回相关文档块和数据库查询结果
+            return relevance_chunks, db_results
 
     def _generate_answer(
         self,
         user_question: str,
         knowledge_graph_context: str,
         relevant_chunks: List[NodeWithScore],
+        db_results: Optional[List[DatabaseQueryResult]] = None,
     ) -> Generator[ChatEvent, None, Tuple[str, List[SourceDocument]]]:
         """
-        根据用户问题、知识图谱上下文和相关文档块生成回答
+        根据用户问题、知识图谱上下文、相关文档块和数据库查询结果生成回答
         
         参数:
             user_question: 用户问题（可能是已重写的）
             knowledge_graph_context: 知识图谱上下文
             relevant_chunks: 相关文档块列表
+            db_results: 数据库查询结果列表
             
         返回:
             生成器，最终产生回答文本和源文档列表的元组
@@ -663,11 +679,24 @@ class ChatFlow:
             text_qa_template = RichPromptTemplate(
                 template_str=self.engine_config.llm.text_qa_prompt
             )
+            
+            # 处理数据库查询结果
+            database_context = ""
+            if db_results and len(db_results) > 0:
+                db_contexts = []
+                for result in db_results:
+                    if not result.error:  # 只添加成功的查询结果
+                        db_contexts.append(result.to_context_str())
+                
+                if db_contexts:
+                    database_context = "\n\n数据库查询结果:\n" + "\n\n".join(db_contexts)
+            
             # 部分格式化模板，填入固定参数
             text_qa_template = text_qa_template.partial_format(
                 current_date=datetime.now().strftime("%Y-%m-%d"),  # 当前日期
                 graph_knowledges=knowledge_graph_context,  # 知识图谱上下文
                 original_question=self.user_question,  # 原始问题
+                database_results=database_context,  # 数据库查询结果
             )
             # 获取响应合成器
             response_synthesizer = get_response_synthesizer(
@@ -721,6 +750,7 @@ class ChatFlow:
                 output=response_text,
                 metadata={
                     "source_documents": source_documents,
+                    "has_db_results": bool(db_results and len(db_results) > 0),
                 },
             )
 

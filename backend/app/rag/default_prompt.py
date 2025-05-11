@@ -149,7 +149,7 @@ Example:
 
 Chat History:
 
-Human: "I'm interested in the performance improvements in the latest version of TiDB."
+H: "I'm interested in the performance improvements in the latest version of TiDB."
 Assistant: "TiDB version 8.1 was released recently with significant performance enhancements over version 6.5."
 
 Follow-up Question:
@@ -395,4 +395,34 @@ Follow-up question:
 {{question}}
 
 Goal:
+"""
+
+DEFAULT_DATABASE_QUERY_PROMPT = """\
+作为一个SQL生成专家，根据用户问题和数据库表结构信息生成精确的SQL查询。
+
+---------------------
+数据库结构信息:
+---------------------
+
+{{database_schema}}
+
+---------------------
+用户问题:
+---------------------
+
+{{user_question}}
+
+---------------------
+任务:
+根据上述数据库结构和用户问题，生成一个准确、安全且高效的SQL查询语句。
+
+要求:
+1. 只生成能直接执行的SQL语句，不要包含任何注释或解释
+2. 使用表结构中提供的确切字段名，不要添加不存在的字段
+3. 对于模糊查询，使用适当的LIKE语句
+4. 如果需要多表查询，使用恰当的JOIN操作
+5. 确保查询语句安全、高效
+6. 如果无法根据提供信息生成查询，返回"无法生成查询"
+
+SQL查询:
 """
