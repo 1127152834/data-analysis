@@ -27,7 +27,7 @@ export const databaseConnectionSchema = z.object({
   config: z.record(z.any()), // 具体的配置结构取决于数据库类型
   read_only: z.boolean(),
   connection_status: databaseConnectionStatusSchema,
-  last_connected_at: z.string().optional(),
+  last_connected_at: z.string().nullable().optional(),
   metadata_cache: z.record(z.any()).optional(),
   metadata_updated_at: z.string().nullable().optional(),
   metadata_summary: z.record(z.any()).optional(),
@@ -36,7 +36,7 @@ export const databaseConnectionSchema = z.object({
 // 创建数据库连接的Schema
 export const databaseConnectionCreatePayloadSchema = z.object({
   name: z.string().min(1, "名称不能为空"),
-  description: z.string().optional(),
+  description: z.string().min(1, "描述不能为空"),
   database_type: databaseConnectionTypeSchema,
   config: z.record(z.any()),
   read_only: z.boolean().optional().default(true),
@@ -145,7 +145,7 @@ export async function createDatabaseConnection(payload: DatabaseConnectionCreate
       ...await authenticationHeaders(),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ connection_create: payload }),
   }).then(handleResponse(databaseConnectionSchema));
 }
 
@@ -200,10 +200,17 @@ export async function deleteDatabaseConnection(id: number): Promise<void> {
  * 测试数据库连接配置 (针对未保存的配置)
  * @param config 数据库连接配置
  */
-export async function testDatabaseConnection(config: DatabaseConnectionCreatePayload): Promise<ConnectionTestResponse> {
-  // TODO: 实现API调用 - 这需要后端支持一个测试未保存配置的端点
-  console.warn('testDatabaseConnection (for unsaved config) is not yet implemented pending backend endpoint. Returning mocked success.', config);
-  return Promise.resolve({ success: true, message: 'Connection test successful (mocked for unsaved config)' });
+export async function testDatabaseConfig(config: DatabaseConnectionCreatePayload): Promise<ConnectionTestResponse> {
+  console.log("Testing database connection config:", JSON.stringify(config));
+  
+  return fetch(requestUrl('/api/v1/admin/database/connections/test-config'), {
+    method: 'POST',
+    headers: {
+      ...await authenticationHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ connection_config: config }),
+  }).then(handleResponse(connectionTestResponseSchema));
 }
 
 /**

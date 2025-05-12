@@ -1,18 +1,14 @@
+'use client';
+
 // 数据库类型选择组件
-import { useState, useEffect, ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatabaseConnectionType, getDatabaseTypes } from '@/api/database';
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { FormCombobox } from '@/components/form/control-widget';
-import { Loader2Icon } from 'lucide-react';
 
 interface DatabaseTypeSelectProps {
   value?: DatabaseConnectionType;
   onChange: (value: DatabaseConnectionType) => void;
-  disabled?: boolean; // Optional: to disable the select
+  disabled?: boolean;
 }
 
 export function DatabaseTypeSelect({ value, onChange, disabled }: DatabaseTypeSelectProps) {
@@ -20,60 +16,68 @@ export function DatabaseTypeSelect({ value, onChange, disabled }: DatabaseTypeSe
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 加载数据库类型
   useEffect(() => {
-    async function fetchTypes() {
+    const loadDatabaseTypes = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const fetchedTypes = await getDatabaseTypes();
-        setTypes(fetchedTypes);
+        
+        // 注意：如果后端API不存在，可以使用以下静态数据
+        const staticTypes = [
+          { value: 'mysql' as DatabaseConnectionType, label: 'MySQL' },
+          { value: 'postgresql' as DatabaseConnectionType, label: 'PostgreSQL' },
+          { value: 'mongodb' as DatabaseConnectionType, label: 'MongoDB' },
+          { value: 'sql_server' as DatabaseConnectionType, label: 'SQL Server' },
+          { value: 'oracle' as DatabaseConnectionType, label: 'Oracle' },
+        ];
+        
+        try {
+          // 尝试从API获取
+          const typesList = await getDatabaseTypes();
+          setTypes(typesList);
+        } catch (e) {
+          // 如果API失败，使用静态数据
+          console.warn('Failed to fetch database types from API, using static data', e);
+          setTypes(staticTypes);
+        }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-        console.error('Failed to fetch database types:', errorMessage);
-        setError(errorMessage);
-        setTypes([]); // Clear types on error
+        setError('获取数据库类型列表失败');
+        console.error('Failed to load database types:', err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    }
-    fetchTypes();
+    };
+
+    loadDatabaseTypes();
   }, []);
 
-  // 转换数据到FormCombobox需要的格式
-  const options = types.map(type => ({
-    id: type.value,
-    name: type.label,
-    provider: 'database',
-    model: type.value,
-  }));
-
-  // 处理FormCombobox的onChange事件
-  const handleChange = (newValue: string | ChangeEvent<any> | undefined) => {
-    if (typeof newValue === 'string' && newValue) {
-      onChange(newValue as DatabaseConnectionType);
-    }
-  };
-
   return (
-    <FormCombobox
-      placeholder="选择数据库类型"
+    <Select 
       value={value}
-      onChange={handleChange}
-      disabled={disabled}
-      config={{
-        options,
-        loading: isLoading,
-        error,
-        optionKeywords: (option) => [option.name, option.model],
-        renderValue: (option) => (
-          <span>{option.name}</span>
-        ),
-        renderOption: (option) => (
-          <div>
-            <div className="font-medium">{option.name}</div>
-          </div>
-        ),
-        key: 'id',
-      }}
-    />
+      onValueChange={value => onChange(value as DatabaseConnectionType)}
+      disabled={disabled || isLoading}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="选择数据库类型" />
+      </SelectTrigger>
+      <SelectContent>
+        {error ? (
+          <SelectItem value="_error" disabled>
+            {error}
+          </SelectItem>
+        ) : isLoading ? (
+          <SelectItem value="_loading" disabled>
+            加载中...
+          </SelectItem>
+        ) : (
+          types.map((type) => (
+            <SelectItem key={type.value} value={type.value}>
+              {type.label}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
   );
 } 

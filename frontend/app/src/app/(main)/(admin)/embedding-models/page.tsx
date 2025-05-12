@@ -11,13 +11,13 @@ export default function EmbeddingModelPage () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Models' },
-          { title: 'Embedding Models', docsUrl: 'https://autoflow.tidb.ai/embedding-model' },
+          { title: '模型' },
+          { title: '向量模型', docsUrl: 'https://autoflow.tidb.ai/embedding-model' },
         ]}
       />
       <NextLink href="/embedding-models/create">
         <PlusIcon className="size-4" />
-        New Embedding Model
+        创建向量模型
       </NextLink>
       <EmbeddingModelsTable />
     </>

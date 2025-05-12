@@ -32,7 +32,12 @@ class DatabaseConnectionCreate(BaseModel):
         if not db_type:
             return v
             
-        required_fields = {'host', 'port', 'user', 'password', 'database'}
+        required_fields = {'host', 'port', 'user', 'database'}  # 移除'password'，使其成为可选项
+        
+        # 对MongoDB需要单独处理，它只需要connection_string
+        if db_type == DatabaseType.MONGODB:
+            required_fields = {'connection_string'}
+            
         missing_fields = required_fields - set(v.keys())
         
         if missing_fields:

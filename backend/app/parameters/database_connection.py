@@ -19,9 +19,9 @@ class BaseDatabaseParameters(BaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称
     port: int  # 端口号
+    password: str = ""  # 密码，可选，默认为空字符串
     
     # 指定哪些字段应该加密存储
     SENSITIVE_FIELDS: ClassVar[List[str]] = ["password"]
@@ -64,9 +64,9 @@ class MySQLParameters(BaseDatabaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称
     port: int = 3306  # MySQL默认端口
+    password: str = ""  # 密码，可选，默认为空字符串
     charset: str = "utf8mb4"  # 默认字符集
     pool_size: int = 5  # 连接池大小
     pool_recycle: int = 300  # 连接回收时间（秒）
@@ -96,9 +96,9 @@ class PostgreSQLParameters(BaseDatabaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称 
     port: int = 5432  # PostgreSQL默认端口
+    password: str = ""  # 密码，可选，默认为空字符串
     schema: Optional[str] = None  # 模式名
     pool_size: int = 5  # 连接池大小
     pool_recycle: int = 300  # 连接回收时间（秒）
@@ -134,9 +134,9 @@ class MongoDBParameters(BaseDatabaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称
     port: int = 27017  # MongoDB默认端口
+    password: str = ""  # 密码，可选，默认为空字符串
     auth_source: Optional[str] = None  # 认证数据库
     auth_mechanism: Optional[str] = None  # 认证机制
     ssl: bool = False  # 是否使用SSL
@@ -175,9 +175,9 @@ class SQLServerParameters(BaseDatabaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称
     port: int = 1433  # SQL Server默认端口
+    password: str = ""  # 密码，可选，默认为空字符串
     driver: str = "ODBC Driver 17 for SQL Server"  # 默认驱动
     trust_server_certificate: bool = False  # 是否信任服务器证书
     encrypt: bool = True  # 是否加密连接
@@ -212,9 +212,9 @@ class OracleParameters(BaseDatabaseParameters):
     """
     host: str  # 主机地址
     user: str  # 用户名
-    password: str  # 密码
     database: str  # 数据库名称
     port: int = 1521  # Oracle默认端口
+    password: str = ""  # 密码，可选，默认为空字符串
     service_name: Optional[str] = None  # 服务名
     sid: Optional[str] = None  # SID
     mode: Optional[str] = None  # 连接模式

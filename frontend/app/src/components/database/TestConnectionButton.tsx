@@ -1,48 +1,65 @@
-import { Button } from '@/components/ui/button';
-import { Loader2, Database, CheckCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+'use client';
 
-// 测试连接按钮组件
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { ConnectionTestResponse } from '@/api/database';
+import { Loader2 } from 'lucide-react';
+
 interface TestConnectionButtonProps {
-  onClick: () => void;
-  loading?: boolean;
-  success?: boolean;
+  onTest: () => Promise<ConnectionTestResponse>;
+  disabled?: boolean;
+  hideResult?: boolean;
 }
 
-export function TestConnectionButton({ onClick, loading, success }: TestConnectionButtonProps) {
+export function TestConnectionButton({ onTest, disabled, hideResult = false }: TestConnectionButtonProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<ConnectionTestResponse | null>(null);
+
+  const handleTest = async () => {
+    setIsLoading(true);
+    setResult(null);
+    
+    try {
+      const testResult = await onTest();
+      if (!hideResult) {
+        setResult(testResult);
+      }
+    } catch (error) {
+      if (!hideResult) {
+        setResult({
+          success: false,
+          message: error instanceof Error ? error.message : '测试连接失败',
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button 
-            type="button" 
-            variant={success ? "outline" : "secondary"}
-            onClick={onClick} 
-            disabled={loading}
-            className={`gap-2 ${success ? 'border-green-500 text-green-600 hover:bg-green-50' : ''}`}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>测试中...</span>
-              </>
-            ) : success ? (
-              <>
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>连接成功</span>
-              </>
-            ) : (
-              <>
-                <Database className="h-4 w-4" />
-                <span>测试连接</span>
-              </>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>测试数据库连接是否可用</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <div>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={handleTest}
+        disabled={disabled || isLoading}
+        className="w-full"
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            测试中...
+          </>
+        ) : (
+          '测试连接'
+        )}
+      </Button>
+      
+      {!hideResult && result && (
+        <div className={`mt-2 text-sm ${result.success ? 'text-green-600' : 'text-red-600'}`}>
+          {result.message}
+        </div>
+      )}
+    </div>
   );
 } 

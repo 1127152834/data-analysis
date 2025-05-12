@@ -58,13 +58,14 @@ class DatabaseConnection(UpdatableBaseModel, table=True):
     description: str = Field(max_length=512)  # 连接描述
     database_type: DatabaseType  # 数据库类型
     config: Dict = Field(default={}, sa_column=Column(JSON))  # 连接配置（包含加密的敏感信息）
-    user_id: UUID = Field(foreign_key="users.id", nullable=True)  # 关联的用户ID
+    # 关联用户信息
+    user_id: UUID = Field(foreign_key="users.id", nullable=True)  # 创建聊天的用户ID
     user: "User" = SQLRelationship(
         sa_relationship_kwargs={
             "lazy": "joined",
             "primaryjoin": "DatabaseConnection.user_id == User.id",
         },
-    )  # 关联的用户对象
+    )
     read_only: bool = Field(default=True)  # 是否只读模式
     connection_status: ConnectionStatus = Field(default=ConnectionStatus.DISCONNECTED)  # 连接状态
     last_connected_at: Optional[datetime] = Field(default=None)  # 最后连接时间

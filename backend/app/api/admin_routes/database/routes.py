@@ -72,7 +72,7 @@ def list_database_connections(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid connection status: {status}"
+                detail=f"无效的连接状态: {status}"
             )
     
     # 使用仓库查询数据
@@ -106,7 +106,7 @@ def create_database_connection(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Database connection with name '{connection_create.name}' already exists"
+            detail=f"数据库连接名称 '{connection_create.name}' 已存在"
         )
     
     # 获取参数类
@@ -125,9 +125,12 @@ def create_database_connection(
         database_type=connection_create.database_type,
         config=encrypted_config,
         read_only=connection_create.read_only,
-        user_id=user.id,
+        user_id=user.id,  # 确保这里传入的是UUID值而不是字符串表达式
         connection_status=ConnectionStatus.DISCONNECTED,
     )
+    
+    # 添加调试日志
+    print(f"DEBUG: user.id类型: {type(user.id)}, 值: {user.id}")
     
     # 保存到数据库
     connection = repo.create(session, new_connection)
@@ -156,7 +159,7 @@ def get_database_connection(
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     return connection
@@ -180,7 +183,7 @@ def update_database_connection(
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     # 检查名称是否已存在（如果要更新名称）
@@ -189,7 +192,7 @@ def update_database_connection(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Database connection with name '{connection_update.name}' already exists"
+                detail=f"数据库连接名称 '{connection_update.name}' 已存在"
             )
     
     # 更新基本字段
@@ -261,7 +264,7 @@ def delete_database_connection(
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     # 软删除
@@ -301,7 +304,7 @@ def get_database_metadata(
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     # 如果已有缓存且未要求强制刷新，则直接返回缓存
@@ -318,7 +321,7 @@ def get_database_metadata(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create database connector: {str(e)}"
+            detail=f"创建数据库连接器失败: {str(e)}"
         )
     
     # 获取元数据
@@ -340,7 +343,7 @@ def get_database_metadata(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get database metadata: {str(e)}"
+            detail=f"获取数据库元数据失败: {str(e)}"
         )
     finally:
         connector.close()
@@ -365,14 +368,14 @@ def execute_database_query(
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     # 检查是否为只读模式，如果是只读模式且查询不是SELECT，则拒绝执行
     if connection.read_only and not query.strip().upper().startswith("SELECT"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only SELECT statements are allowed on read-only connections"
+            detail="只读连接仅允许执行SELECT语句"
         )
     
     # 获取连接器
@@ -381,7 +384,7 @@ def execute_database_query(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create database connector: {str(e)}"
+            detail=f"创建数据库连接器失败: {str(e)}"
         )
     
     # 执行查询
@@ -391,10 +394,62 @@ def execute_database_query(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query execution failed: {str(e)}"
+            detail=f"查询执行失败: {str(e)}"
         )
     finally:
         connector.close()
+
+
+@router.post("/admin/database/connections/test-config", response_model=ConnectionTestResponse)
+def test_database_connection_config(
+    connection_config: DatabaseConnectionCreate,
+    session: Annotated[Session, Depends(get_db_session)],
+    user: User = CurrentSuperuserDep,
+):
+    """
+    测试数据库连接配置
+    
+    测试未保存的数据库连接配置是否可用
+    """
+    try:
+        # 获取参数类
+        params_class = _get_params_class_for_type(connection_config.database_type)
+        
+        # 创建临时连接对象
+        temp_connection = DatabaseConnection(
+            id=-1,  # 临时ID
+            name=connection_config.name,
+            description=connection_config.description,
+            database_type=connection_config.database_type,
+            config=connection_config.config,
+            read_only=connection_config.read_only,
+            user_id=user.id,
+            connection_status=ConnectionStatus.DISCONNECTED,
+        )
+        
+        # 获取连接器
+        connector = get_connector(temp_connection)
+        
+        # 测试连接并获取结果
+        test_result = connector.test_connection()
+        
+        return ConnectionTestResponse(
+            success=test_result.success,
+            message=test_result.message,
+            details=test_result.details
+        )
+    except Exception as e:
+        # 返回错误详情
+        error_message = str(e)
+        return ConnectionTestResponse(
+            success=False,
+            message=f"连接失败: {error_message}",
+            details={"error": error_message}
+        )
+    finally:
+        # 如果创建了连接器，确保关闭
+        if 'connector' in locals():
+            connector.close()
 
 
 def _get_params_class_for_type(database_type: DatabaseType) -> type:
@@ -419,7 +474,7 @@ def _get_params_class_for_type(database_type: DatabaseType) -> type:
     }
     
     if database_type not in type_to_class:
-        raise ValueError(f"No parameter class for database type: {database_type}")
+        raise ValueError(f"未找到数据库类型对应的参数类: {database_type}")
     
     return type_to_class[database_type]
 
@@ -443,26 +498,32 @@ def _test_and_update_connection(connection_id: int, session: Session) -> Connect
     if not connection or connection.deleted_at:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Database connection with ID {connection_id} not found"
+            detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
     try:
         # 获取连接器
         connector = get_connector(connection)
         
-        # 测试连接
-        connector.test_connection()
+        # 测试连接并获取结果
+        test_result = connector.test_connection()
         
-        # 更新连接状态
-        connection.connection_status = ConnectionStatus.CONNECTED
-        connection.last_connected_at = datetime.utcnow()
+        # 根据测试结果更新连接状态
+        if test_result.success:
+            connection.connection_status = ConnectionStatus.CONNECTED
+            connection.last_connected_at = datetime.utcnow()
+        else:
+            connection.connection_status = ConnectionStatus.ERROR
+        
         connection.updated_at = datetime.utcnow()
         session.add(connection)
         session.commit()
         
+        # 返回测试结果
         return ConnectionTestResponse(
-            success=True,
-            message="Connection successful"
+            success=test_result.success,
+            message=test_result.message,
+            details=test_result.details
         )
     except Exception as e:
         # 更新连接状态为错误
@@ -475,27 +536,10 @@ def _test_and_update_connection(connection_id: int, session: Session) -> Connect
         error_message = str(e)
         return ConnectionTestResponse(
             success=False,
-            message=f"Connection failed: {error_message}",
+            message=f"连接失败: {error_message}",
             details={"error": error_message}
         )
     finally:
         # 如果创建了连接器，确保关闭
         if 'connector' in locals():
             connector.close() 
-    
-    # 测试连接
-    try:
-        test_result = connector.test_connection()
-        
-        # 更新连接状态
-        new_status = ConnectionStatus.CONNECTED if test_result.success else ConnectionStatus.ERROR
-        repo.update_status(session, connection_id, new_status)
-        
-        return ConnectionTestResponse(
-            success=test_result.success,
-            message=test_result.message,
-            details=test_result.details,
-        )
-    finally:
-        # 确保连接被关闭
-        connector.close() 

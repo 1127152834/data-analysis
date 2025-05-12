@@ -40,7 +40,6 @@ export const getChunkById = async (
   chunkId: string
 ): Promise<{ id: string; text: string } | null> => {
   try {
-    console.log(`请求chunk ID: ${chunkId}`);
     const response = await fetch(
       requestUrl(`/api/v1/chunks/id/${chunkId}`)
     );
