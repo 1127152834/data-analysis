@@ -30,6 +30,7 @@ from .evaluation_dataset import EvaluationDataset, EvaluationDatasetItem
 from .chat_engine import ChatEngine, ChatEngineUpdate
 from .chat import Chat, ChatUpdate, ChatVisibility, ChatFilters, ChatOrigin
 from .chat_message import ChatMessage
+from .chat_meta import ChatMeta
 from .recommend_question import RecommendQuestion
 from .semantic_cache import SemanticCache
 

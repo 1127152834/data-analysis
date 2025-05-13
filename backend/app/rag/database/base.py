@@ -65,6 +65,29 @@ class BaseConnector(ABC):
         pass
     
     @abstractmethod
+    def get_tables(self) -> List[str]:
+        """
+        获取数据库中的表列表
+        
+        返回:
+            List[str]: 表名列表
+        """
+        pass
+    
+    @abstractmethod
+    def get_table_columns(self, table_name: str) -> List[Dict[str, Any]]:
+        """
+        获取指定表的列信息
+        
+        参数:
+            table_name: 表名
+            
+        返回:
+            List[Dict[str, Any]]: 列信息列表，每个列包含名称、类型等信息
+        """
+        pass
+    
+    @abstractmethod
     def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         执行查询
@@ -73,7 +96,7 @@ class BaseConnector(ABC):
         
         参数:
             query: SQL查询字符串
-            params: 查询参数
+            params: 查询参数，可能包含timeout(超时时间)和max_rows(最大返回行数)等
             
         返回:
             Tuple[List[Dict[str, Any]], Optional[str]]: 查询结果和错误信息（如果有）

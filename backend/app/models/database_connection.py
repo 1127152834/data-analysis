@@ -1,6 +1,6 @@
 from enum import Enum
 from uuid import UUID
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 
 from sqlmodel import (
@@ -32,8 +32,9 @@ class DatabaseType(str, Enum):
     MYSQL = "mysql"
     POSTGRESQL = "postgresql"
     MONGODB = "mongodb"
-    SQLSERVER = "sql_server"
+    SQLSERVER = "sqlserver"
     ORACLE = "oracle"
+    SQLITE = "sqlite"
 
 
 class ConnectionStatus(str, Enum):
@@ -61,6 +62,8 @@ class DatabaseConnection(UpdatableBaseModel, table=True):
     description_for_llm: Optional[str] = Field(default=None, sa_column=Column(Text))  # 用于LLM的业务场景描述
     table_descriptions: Dict = Field(default={}, sa_column=Column(JSON))  # 表描述信息，格式: {table_name: description}
     column_descriptions: Dict = Field(default={}, sa_column=Column(JSON))  # 列描述信息，格式: {table_name: {column_name: description}}
+    # 可访问角色列表
+    accessible_roles: List[str] = Field(default=["admin"], sa_column=Column(JSON))  # 可访问此数据库的角色列表
     database_type: DatabaseType  # 数据库类型
     config: Dict = Field(default={}, sa_column=Column(JSON))  # 连接配置（包含加密的敏感信息）
     # 关联用户信息

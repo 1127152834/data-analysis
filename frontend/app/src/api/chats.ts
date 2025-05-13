@@ -31,6 +31,20 @@ export const enum ChatMessageRole {
   user = 'user'
 }
 
+// 数据库查询结果接口
+export interface DatabaseQueryInfo {
+  query: string;
+  connection_name: string;
+  database_type: string;
+  execution_time_ms: number;
+  error?: string;
+  result?: {
+    columns: string[];
+    rows: Record<string, any>[];
+    total_rows: number;
+  };
+}
+
 export interface ChatMessage {
   id: number;
   role: ChatMessageRole;
@@ -45,6 +59,7 @@ export interface ChatMessage {
   sources: ChatMessageSource[];
   chat_id: string;
   post_verification_result_url: string | null;
+  database_query?: DatabaseQueryInfo; // 添加数据库查询信息字段
 }
 
 export interface ChatMessageSource {
@@ -72,6 +87,20 @@ const chatMessageSourceSchema = z.object({
   source_uri: z.string(),
 });
 
+// 添加数据库查询信息schema
+const databaseQueryInfoSchema = z.object({
+  query: z.string(),
+  connection_name: z.string(),
+  database_type: z.string(),
+  execution_time_ms: z.number(),
+  error: z.string().optional(),
+  result: z.object({
+    columns: z.array(z.string()),
+    rows: z.array(z.record(z.unknown())),
+    total_rows: z.number()
+  }).optional()
+});
+
 export const chatMessageSchema = z.object({
   id: z.number(),
   role: z.enum([ChatMessageRole.user, ChatMessageRole.assistant]),
@@ -86,6 +115,7 @@ export const chatMessageSchema = z.object({
   sources: chatMessageSourceSchema.array(),
   chat_id: z.string(),
   post_verification_result_url: z.string().url().nullable(),
+  database_query: databaseQueryInfoSchema.optional(), // 添加数据库查询信息schema
 }) satisfies ZodType<ChatMessage, any, any>;
 
 const chatDetailSchema = z.object({

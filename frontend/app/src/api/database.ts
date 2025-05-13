@@ -6,7 +6,7 @@ import { z } from 'zod';
  * 支持的数据库类型
  * 与后端 app/models/database_connection.py 中的 DatabaseType 枚举对应
  */
-export type DatabaseConnectionType = 'mysql' | 'postgresql' | 'mongodb' | 'sql_server' | 'oracle';
+export type DatabaseConnectionType = 'mysql' | 'postgresql' | 'mongodb' | 'sqlserver' | 'oracle';
 
 /**
  * 数据库连接状态
@@ -14,9 +14,15 @@ export type DatabaseConnectionType = 'mysql' | 'postgresql' | 'mongodb' | 'sql_s
  */
 export type DatabaseConnectionStatus = 'connected' | 'disconnected' | 'error';
 
+/**
+ * 数据库访问角色
+ */
+export type DatabaseAccessRole = 'admin' | 'user';
+
 // Zod Schema 定义
-export const databaseConnectionTypeSchema = z.enum(['mysql', 'postgresql', 'mongodb', 'sql_server', 'oracle']);
+export const databaseConnectionTypeSchema = z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle']);
 export const databaseConnectionStatusSchema = z.enum(['connected', 'disconnected', 'error']);
+export const databaseAccessRoleSchema = z.enum(['admin', 'user']);
 
 // 数据库连接对象Schema
 export const databaseConnectionSchema = z.object({
@@ -31,6 +37,10 @@ export const databaseConnectionSchema = z.object({
   metadata_cache: z.record(z.any()).optional(),
   metadata_updated_at: z.string().nullable().optional(),
   metadata_summary: z.record(z.any()).optional(),
+  // 添加表描述、列描述和权限配置相关字段
+  table_descriptions: z.record(z.string()).optional(),
+  column_descriptions: z.record(z.string()).optional(),
+  accessible_roles: z.array(databaseAccessRoleSchema).optional().default(['admin']),
 });
 
 // 创建数据库连接的Schema
@@ -41,6 +51,10 @@ export const databaseConnectionCreatePayloadSchema = z.object({
   config: z.record(z.any()),
   read_only: z.boolean().optional().default(true),
   test_connection: z.boolean().optional().default(false),
+  // 添加表描述、列描述和权限配置相关字段
+  table_descriptions: z.record(z.string()).optional(),
+  column_descriptions: z.record(z.string()).optional(),
+  accessible_roles: z.array(databaseAccessRoleSchema).optional(),
 });
 
 // 更新数据库连接的Schema
@@ -51,6 +65,10 @@ export const databaseConnectionUpdatePayloadSchema = z.object({
   config: z.record(z.any()).optional(),
   read_only: z.boolean().optional(),
   test_connection: z.boolean().optional().default(false),
+  // 添加表描述、列描述和权限配置相关字段
+  table_descriptions: z.record(z.string()).optional(),
+  column_descriptions: z.record(z.string()).optional(),
+  accessible_roles: z.array(databaseAccessRoleSchema).optional(),
 });
 
 // 连接测试响应的Schema
@@ -173,16 +191,41 @@ export async function getDatabaseConnection(id: number): Promise<DatabaseConnect
  * @param payload 更新连接所需的数据
  */
 export async function updateDatabaseConnection(id: number, payload: DatabaseConnectionUpdatePayload): Promise<DatabaseConnection> {
-  console.log("Sending payload to update database connection:", JSON.stringify(payload));
+  // 打印原始payload进行调试
+  console.log("原始更新payload:", payload);
   
-  return fetch(requestUrl(`/api/v1/admin/database/connections/${id}`), {
-    method: 'PUT',
-    headers: {
-      ...await authenticationHeaders(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ connection_update: payload }),
-  }).then(handleResponse(databaseConnectionSchema));
+  // 确保test_connection字段存在
+  const finalPayload = {
+    ...payload,
+    test_connection: payload.test_connection !== undefined ? payload.test_connection : false
+  };
+  
+  // 打印最终发送的payload
+  console.log("发送到后端的最终payload:", JSON.stringify({
+    connection_update: finalPayload
+  }, null, 2));
+  
+  try {
+    const response = await fetch(requestUrl(`/api/v1/admin/database/connections/${id}`), {
+      method: 'PUT',
+      headers: {
+        ...await authenticationHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ connection_update: finalPayload }),
+    });
+    
+    // 尝试获取原始响应文本进行调试
+    const responseClone = response.clone();
+    const responseText = await responseClone.text();
+    console.log(`更新数据库连接 ID=${id} 响应:`, responseText);
+    
+    // 继续正常处理
+    return handleResponse(databaseConnectionSchema)(response);
+  } catch (error) {
+    console.error("更新数据库连接出错:", error);
+    throw error;
+  }
 }
 
 /**

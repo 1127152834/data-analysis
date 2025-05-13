@@ -41,5 +41,8 @@ def get_connector(connection: DatabaseConnection) -> Optional[BaseConnector]:
     elif connection.database_type == DatabaseType.ORACLE:
         from app.rag.database.connectors.oracle import OracleConnector
         return OracleConnector(connection)
+    elif connection.database_type == DatabaseType.SQLITE:
+        from app.rag.database.connectors.sqlite import SQLiteConnector
+        return SQLiteConnector(connection)
     else:
         raise ValueError(f"Unsupported database type: {connection.database_type}") 

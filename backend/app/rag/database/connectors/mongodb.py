@@ -398,4 +398,67 @@ class MongoDBConnector(BaseConnector):
         if self.client:
             self.client.close()
             self.client = None
-            self.db = None 
+            self.db = None
+    
+    def get_tables(self) -> List[str]:
+        """
+        获取数据库中的集合列表（MongoDB中的"表"）
+        
+        返回:
+            List[str]: 集合名列表
+        """
+        if not self.client:
+            self.connect()
+            
+        if not self.client:
+            return []
+            
+        try:
+            db = self.client[self.parameters.database]
+            # 获取所有集合名
+            return db.list_collection_names()
+        except Exception as e:
+            logger.error(f"Failed to get collections: {str(e)}")
+            return []
+    
+    def get_table_columns(self, table_name: str) -> List[Dict[str, Any]]:
+        """
+        获取指定集合的字段信息
+        
+        注意：MongoDB是无模式的，我们通过采样文档来推断字段
+        
+        参数:
+            table_name: 集合名
+            
+        返回:
+            List[Dict[str, Any]]: 字段信息列表
+        """
+        if not self.client:
+            self.connect()
+            
+        if not self.client:
+            return []
+            
+        try:
+            db = self.client[self.parameters.database]
+            collection = db[table_name]
+            
+            # 获取样本文档来推断字段
+            sample_size = 10
+            sample_docs = list(collection.find().limit(sample_size))
+            
+            if not sample_docs:
+                return []
+                
+            # 收集所有唯一字段和它们的类型
+            fields = {}
+            for doc in sample_docs:
+                for field, value in doc.items():
+                    if field not in fields:
+                        fields[field] = {"name": field, "type": type(value).__name__}
+            
+            # 转换为列表
+            return list(fields.values())
+        except Exception as e:
+            logger.error(f"Failed to get fields for collection '{table_name}': {str(e)}")
+            return [] 

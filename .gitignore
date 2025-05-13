@@ -141,3 +141,5 @@ coverage.xml
 
 # 依赖管理
 node_modules/
+
+./*.md

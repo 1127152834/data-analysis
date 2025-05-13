@@ -3,10 +3,14 @@ import type { ChatMessageController } from '@/components/chat/chat-message-contr
 import { AppChatStreamState } from '@/components/chat/chat-stream-state';
 import { MessageBetaAlert } from '@/components/chat/message-beta-alert';
 import { MessageContent } from '@/components/chat/message-content';
+import { DatabaseIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export function MessageAnswer ({ message, showBetaAlert }: { message: ChatMessageController | undefined, showBetaAlert?: boolean }) {
   const content = useChatMessageField(message, 'content');
   const shouldShow = useChatMessageStreamContainsState(message, AppChatStreamState.GENERATE_ANSWER);
+  const dbQuery = useChatMessageField(message, 'database_query');
+  const hasDatabaseQuery = !!dbQuery;
 
   if (!shouldShow && !content?.length) {
     return null;
@@ -26,6 +30,15 @@ export function MessageAnswer ({ message, showBetaAlert }: { message: ChatMessag
           <rect x="298" y="422" width="150" height="150" rx="24" fill="white" />
         </svg>
         回答
+        {hasDatabaseQuery && (
+          <span className={cn(
+            "flex items-center text-sm px-2 py-0.5 rounded-full",
+            dbQuery?.error ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+          )}>
+            <DatabaseIcon size={14} className="mr-1" />
+            {dbQuery?.error ? "查询错误" : "数据库查询"}
+          </span>
+        )}
       </div>
       {showBetaAlert && <MessageBetaAlert />}
       <MessageContent message={message} />

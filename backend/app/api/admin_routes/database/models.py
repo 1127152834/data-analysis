@@ -58,6 +58,9 @@ class DatabaseConnectionUpdate(BaseModel):
     read_only: Optional[bool] = Field(None, description="是否只读模式")
     test_connection: bool = Field(False, description="是否测试连接")
     database_type: Optional[DatabaseType] = Field(None, description="数据库类型")
+    table_descriptions: Optional[Dict[str, str]] = Field(None, description="表描述信息，格式: {table_name: description}")
+    column_descriptions: Optional[Dict[str, str]] = Field(None, description="列描述信息，格式: {table_name.column_name: description}")
+    accessible_roles: Optional[List[str]] = Field(None, description="可访问此数据库的角色列表，例如: ['admin', 'user']")
 
 
 class DatabaseConnectionDetail(BaseModel):
@@ -83,6 +86,9 @@ class DatabaseConnectionDetail(BaseModel):
             'has_more_tables': False
         }
     )  # 元数据摘要信息，使用default_factory提供默认值
+    table_descriptions: Dict[str, str] = Field(default_factory=dict, description="表描述信息")
+    column_descriptions: Dict[str, str] = Field(default_factory=dict, description="列描述信息")
+    accessible_roles: List[str] = Field(default_factory=lambda: ["admin"], description="可访问此数据库的角色列表")
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     
@@ -126,6 +132,12 @@ class DatabaseConnectionDetail(BaseModel):
         instance = super().from_orm(obj)
         instance.config = sanitized_config
         instance.metadata_summary = metadata_summary  # 确保总是设置metadata_summary
+        if obj.table_descriptions is None:
+            instance.table_descriptions = {}
+        if obj.column_descriptions is None:
+            instance.column_descriptions = {}
+        if obj.accessible_roles is None:
+            instance.accessible_roles = ["admin"]
         return instance
 
 

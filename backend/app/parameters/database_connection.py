@@ -6,7 +6,8 @@
 
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, ClassVar, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+from enum import Enum
 
 from app.parameters import BaseParameters
 
@@ -251,6 +252,37 @@ class OracleParameters(BaseDatabaseParameters):
                 connection_str += "?" + "&".join(params)
                 
         return connection_str
+
+
+class SQLiteParameters(BaseModel):
+    """
+    SQLite连接参数模型
+    
+    用于测试和演示
+    """
+    database: str = Field(..., description="数据库文件路径")
+    
+    # 其他参数
+    pool_size: int = Field(5, description="连接池大小")
+    pool_recycle: int = Field(3600, description="连接池回收时间(秒)")
+    
+    # 敏感字段列表，用于字段加密/解密
+    SENSITIVE_FIELDS: List[str] = []
+    
+    @validator('database')
+    def validate_database(cls, v):
+        if not v:
+            raise ValueError("Database file path cannot be empty")
+        return v
+    
+    def get_connection_string(self) -> str:
+        """获取连接字符串"""
+        return f"sqlite:///{self.database}"
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SQLiteParameters':
+        """从字典创建参数对象"""
+        return cls(**data)
 
 
 class DatabaseConnectionCreate(BaseModel):

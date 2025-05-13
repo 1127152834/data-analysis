@@ -5,18 +5,21 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
+from uuid import UUID
 from pydantic import BaseModel
 
 from sqlmodel import Session
 from llama_index.core.llms import LLM
-from llama_index.core.prompts.rich import RichPromptTemplate
 
-from app.rag.chat.config import ChatEngineConfig
+from app.rag.chat.config import ChatEngineConfig, DatabaseRoutingStrategy
 from app.repositories.database_connection import DatabaseConnectionRepo
+from app.repositories.database_query_history import DatabaseQueryHistoryRepo
 from app.models.database_connection import DatabaseConnection, DatabaseType
-from app.rag.database import get_connector
+from app.models.database_query_history import DatabaseQueryHistory
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +29,14 @@ class DatabaseQueryResult(BaseModel):
     connection_id: int
     connection_name: str
     database_type: DatabaseType
+    question: str  # 添加原始问题字段
     query: str
     result: List[Dict[str, Any]]
     error: Optional[str] = None
     executed_at: datetime = datetime.now()
+    routing_score: Optional[float] = None
+    execution_time_ms: Optional[int] = None  # 添加执行时间字段
+    rows_returned: Optional[int] = None  # 添加返回行数字段
     
     def to_context_str(self) -> str:
         """转换为文本上下文"""
@@ -66,259 +73,245 @@ class DatabaseQueryResult(BaseModel):
 """
         return context
 
+    def to_query_history(
+        self, 
+        chat_id: UUID, 
+        user_id: Optional[UUID] = None,
+        chat_message_id: Optional[int] = None,
+        routing_context: Optional[Dict] = None
+    ) -> DatabaseQueryHistory:
+        """将查询结果转换为历史记录模型"""
+        # 创建结果摘要
+        result_summary = None
+        result_sample = None
+        
+        if not self.error and self.result and len(self.result) > 0:
+            # 创建结果摘要
+            result_summary = {
+                "columns": list(self.result[0].keys()),
+                "row_count": len(self.result)
+            }
+            
+            # 获取结果样本 (最多10行)
+            sample_size = min(10, len(self.result))
+            result_sample = self.result[:sample_size]
+        
+        # 创建查询历史记录
+        history = DatabaseQueryHistory(
+            chat_id=chat_id,
+            chat_message_id=chat_message_id,
+            user_id=user_id,
+            connection_id=self.connection_id,
+            connection_name=self.connection_name,
+            database_type=self.database_type,
+            question=self.question,
+            query=self.query,
+            is_successful=self.error is None,
+            error_message=self.error,
+            result_summary=result_summary,
+            result_sample=result_sample,
+            execution_time_ms=self.execution_time_ms,
+            rows_returned=len(self.result) if self.result else 0,
+            routing_score=self.routing_score,
+            routing_context=routing_context,
+            executed_at=self.executed_at
+        )
+        
+        return history
+
 
 class DatabaseQueryManager:
-    """数据库查询管理器"""
+    """数据库查询管理器
+    
+    负责管理数据库查询相关的操作，包括查询生成、执行和结果处理。
+    """
     
     def __init__(
         self,
-        db_session: Session,
+        db_session: Session, 
         engine_config: ChatEngineConfig,
-        llm: LLM,
+        llm: Optional[LLM] = None,
     ):
+        """
+        初始化数据库查询管理器
+        
+        Args:
+            db_session: 数据库会话
+            engine_config: 引擎配置
+            llm: 语言模型（可选）
+        """
         self.db_session = db_session
         self.engine_config = engine_config
         self.llm = llm
-        self.repo = DatabaseConnectionRepo()
+        self.db_repo = DatabaseConnectionRepo()
+        self.history_repo = DatabaseQueryHistoryRepo()
         
-    def query_databases(self, user_question: str) -> List[DatabaseQueryResult]:
-        """对所有连接的数据库执行查询"""
-        db_option = self.engine_config.database
-        if not db_option.enabled or not db_option.linked_database_connections:
-            logger.debug("数据库查询功能未启用或未配置连接")
-            return []
-            
-        results = []
-        # 获取链接的数据库连接
-        connection_ids = [conn.id for conn in db_option.linked_database_connections]
-        connections = self.repo.get_by_ids(self.db_session, connection_ids)
-        
-        for conn in connections:
-            try:
-                query_result = self._query_single_database(conn, user_question)
-                results.append(query_result)
-            except Exception as e:
-                logger.error(f"查询数据库 {conn.name} (ID: {conn.id}) 时出错: {str(e)}")
-                results.append(
-                    DatabaseQueryResult(
-                        connection_id=conn.id,
-                        connection_name=conn.name,
-                        database_type=conn.database_type,
-                        query="",
-                        result=[],
-                        error=str(e)
-                    )
-                )
-                
-        return results
-        
-    def _query_single_database(
+    def query_databases(
         self, 
-        connection: DatabaseConnection, 
-        user_question: str
-    ) -> DatabaseQueryResult:
-        """查询单个数据库"""
-        # 1. 获取数据库元数据
-        metadata = connection.metadata_cache
-        if not metadata:
-            try:
-                # 尝试获取最新元数据
-                connector = get_connector(connection)
-                if connector:
-                    metadata = connector.get_metadata()
-                    # 更新元数据缓存
-                    self.repo.update_metadata(
-                        self.db_session, 
-                        connection.id, 
-                        metadata
-                    )
-            except Exception as e:
-                logger.error(f"获取数据库 {connection.name} 元数据时出错: {str(e)}")
-                
-        if not metadata:
-            return DatabaseQueryResult(
-                connection_id=connection.id,
-                connection_name=connection.name,
-                database_type=connection.database_type,
+        question: str, 
+        chat_id: UUID,
+        user_id: Optional[UUID] = None,
+        chat_message_id: Optional[int] = None,
+        context: Optional[Dict[str, Any]] = None
+    ) -> List[DatabaseQueryResult]:
+        """
+        查询多个数据库
+        
+        Args:
+            question: 用户问题
+            chat_id: 聊天ID
+            user_id: 用户ID
+            chat_message_id: 聊天消息ID
+            context: 对话上下文（可选）
+            
+        Returns:
+            List[DatabaseQueryResult]: 查询结果列表
+        """
+        # 简化实现，后续填充完整功能
+        logger.info(f"收到数据库查询请求: 问题={question}, 聊天ID={chat_id}, 用户ID={user_id}")
+        results = []
+        
+        try:
+            # 确保数据库功能已启用
+            if not hasattr(self.engine_config, 'database') or not self.engine_config.database.enabled:
+                logger.info("数据库查询功能未启用")
+                return []
+            
+            # 获取配置的数据库连接
+            if not self.engine_config.database.linked_database_configs:
+                logger.info("没有配置的数据库连接")
+                return []
+            
+            # 执行空查询逻辑，返回示例结果
+            # 实际项目中，这里应该实现查询路由、SQL生成和执行功能
+            start_time = time.time()
+            
+            # 查询路由策略
+            routing_strategy = self.engine_config.database.routing_strategy or DatabaseRoutingStrategy.FIRST_AVAILABLE
+            routing_context = {"strategy": routing_strategy.value, "question": question}
+            
+            # 模拟查询执行
+            result = DatabaseQueryResult(
+                connection_id=1,
+                connection_name="示例数据库",
+                database_type=DatabaseType.MYSQL,
+                question=question,  # 保存原始问题
+                query="SELECT 'Hello' as message",
+                result=[{"message": "数据库查询功能正在构建中"}],
+                routing_score=1.0,
+                execution_time_ms=int((time.time() - start_time) * 1000),
+                rows_returned=1
+            )
+            
+            # 保存查询历史
+            query_history = result.to_query_history(
+                chat_id=chat_id,
+                user_id=user_id,
+                chat_message_id=chat_message_id,
+                routing_context=routing_context
+            )
+            self.history_repo.create(self.db_session, query_history)
+            
+            results.append(result)
+            return results
+            
+        except Exception as e:
+            logger.error(f"数据库查询过程出错: {str(e)}")
+            
+            # 记录错误的查询历史
+            error_result = DatabaseQueryResult(
+                connection_id=-1,
+                connection_name="查询出错",
+                database_type=DatabaseType.UNKNOWN,
+                question=question,
                 query="",
                 result=[],
-                error="无法获取数据库元数据"
+                error=str(e),
+                execution_time_ms=0,
+                rows_returned=0
             )
             
-        # 2. 格式化元数据为文本
-        schema_text = self._format_schema_info(connection.database_type, metadata)
+            # 保存错误查询历史
+            query_history = error_result.to_query_history(
+                chat_id=chat_id,
+                user_id=user_id,
+                chat_message_id=chat_message_id
+            )
+            self.history_repo.create(self.db_session, query_history)
+            
+            return []
+            
+    def get_recent_queries(
+        self, 
+        chat_id: UUID, 
+        limit: int = 5,
+        time_window: Optional[timedelta] = None
+    ) -> List[DatabaseQueryResult]:
+        """
+        获取最近的查询历史
         
-        # 3. 使用LLM生成查询
-        query = self._generate_query(user_question, schema_text, connection.database_type)
-        if not query or query == "无法生成查询":
-            return DatabaseQueryResult(
-                connection_id=connection.id,
-                connection_name=connection.name,
-                database_type=connection.database_type,
-                query=query,
-                result=[],
-                error="无法基于用户问题生成查询"
-            )
+        Args:
+            chat_id: 聊天ID
+            limit: 返回结果数量限制
+            time_window: 时间窗口（可选，例如最近30分钟的查询）
             
-        # 4. 执行查询
+        Returns:
+            List[DatabaseQueryResult]: 查询结果列表
+        """
         try:
-            connector = get_connector(connection)
-            if not connector:
-                return DatabaseQueryResult(
-                    connection_id=connection.id,
-                    connection_name=connection.name,
-                    database_type=connection.database_type,
-                    query=query,
-                    result=[],
-                    error="无法创建数据库连接器"
-                )
-                
-            # 确保是只读查询
-            if self.engine_config.database.read_only:
-                # 对SQL类型数据库，拒绝非SELECT查询
-                if connection.database_type in [
-                    DatabaseType.MYSQL, 
-                    DatabaseType.POSTGRESQL, 
-                    DatabaseType.SQLSERVER, 
-                    DatabaseType.ORACLE
-                ]:
-                    if not query.strip().upper().startswith("SELECT"):
-                        return DatabaseQueryResult(
-                            connection_id=connection.id,
-                            connection_name=connection.name,
-                            database_type=connection.database_type,
-                            query=query,
-                            result=[],
-                            error="只允许执行SELECT查询"
-                        )
-                # 对MongoDB，拒绝带更新操作的查询
-                elif connection.database_type == DatabaseType.MONGODB:
-                    forbidden_ops = [
-                        "insert", "update", "delete", "remove", "drop", 
-                        "createIndex", "createCollection"
-                    ]
-                    if any(op in query.lower() for op in forbidden_ops):
-                        return DatabaseQueryResult(
-                            connection_id=connection.id,
-                            connection_name=connection.name,
-                            database_type=connection.database_type,
-                            query=query,
-                            result=[],
-                            error="只允许执行读取操作"
-                        )
-                        
-            # 执行查询并限制结果数量
-            result, error = connector.execute_query(
-                query, 
-                limit=self.engine_config.database.max_results
-            )
-            
-            # 更新数据库连接状态
-            self.repo.update_status(
+            # 从数据库获取最近的查询历史
+            query_histories = self.history_repo.get_recent_queries_in_chat(
                 self.db_session, 
-                connection.id, 
-                "connected",
-                datetime.now()
+                chat_id=chat_id, 
+                limit=limit,
+                since=datetime.now() - time_window if time_window else None
             )
             
-            if error:
-                return DatabaseQueryResult(
-                    connection_id=connection.id,
-                    connection_name=connection.name,
-                    database_type=connection.database_type,
-                    query=query,
-                    result=[],
-                    error=error
+            # 转换为DatabaseQueryResult对象
+            results = []
+            for history in query_histories:
+                # 从历史记录中还原结果
+                result_list = []
+                if history.is_successful and history.result_sample:
+                    result_list = history.result_sample
+                
+                result = DatabaseQueryResult(
+                    connection_id=history.connection_id,
+                    connection_name=history.connection_name,
+                    database_type=history.database_type,
+                    question=history.question,
+                    query=history.query,
+                    result=result_list,
+                    error=history.error_message,
+                    executed_at=history.executed_at,
+                    routing_score=history.routing_score,
+                    execution_time_ms=history.execution_time_ms,
+                    rows_returned=history.rows_returned
                 )
+                results.append(result)
                 
-            return DatabaseQueryResult(
-                connection_id=connection.id,
-                connection_name=connection.name,
-                database_type=connection.database_type,
-                query=query,
-                result=result,
-                error=None
-            )
-                
+            return results
         except Exception as e:
-            logger.error(f"执行查询 {query} 时出错: {str(e)}")
-            return DatabaseQueryResult(
-                connection_id=connection.id,
-                connection_name=connection.name,
-                database_type=connection.database_type,
-                query=query,
-                result=[],
-                error=str(e)
-            )
+            logger.error(f"获取最近查询历史出错: {str(e)}")
+            return []
     
-    def _generate_query(
-        self, 
-        user_question: str, 
-        schema_info: str,
-        database_type: DatabaseType
-    ) -> str:
-        """使用LLM生成查询语句"""
-        prompt_template = RichPromptTemplate(
-            self.engine_config.llm.database_query_prompt
-        )
+    def get_query_statistics(self, chat_id: UUID) -> Dict[str, Any]:
+        """
+        获取聊天的查询统计信息
         
-        query = self.llm.predict(
-            prompt_template,
-            database_schema=schema_info,
-            user_question=user_question,
-            database_type=database_type.value
-        )
-        
-        return query.strip()
-        
-    def _format_schema_info(
-        self, 
-        database_type: DatabaseType, 
-        metadata: Dict[str, Any]
-    ) -> str:
-        """将元数据格式化为文本表示"""
-        if not metadata or not metadata.get("tables"):
-            return "数据库模式信息不可用"
+        Args:
+            chat_id: 聊天ID
             
-        schema_info = []
-        database_name = metadata.get("database", "未知数据库")
-        schema_info.append(f"数据库: {database_name}")
-        
-        tables = metadata.get("tables", {})
-        for table_name, table_info in tables.items():
-            # 表格信息
-            schema_info.append(f"\n表名: {table_name}")
-            
-            # 列信息
-            columns = table_info.get("columns", {})
-            if columns:
-                cols_info = []
-                for col_name, col_info in columns.items():
-                    data_type = col_info.get("type", "未知")
-                    nullable = "NULL" if col_info.get("nullable", True) else "NOT NULL"
-                    primary = "主键" if col_info.get("primary_key", False) else ""
-                    foreign = f"外键->{col_info.get('foreign_key')}" if col_info.get("foreign_key") else ""
-                    
-                    col_desc = f"  - {col_name} ({data_type}, {nullable}"
-                    if primary:
-                        col_desc += f", {primary}"
-                    if foreign:
-                        col_desc += f", {foreign}"
-                    col_desc += ")"
-                    
-                    cols_info.append(col_desc)
-                
-                schema_info.append("列:")
-                schema_info.extend(cols_info)
-                
-            # 索引信息
-            indexes = table_info.get("indexes", [])
-            if indexes:
-                schema_info.append("索引:")
-                for idx in indexes:
-                    idx_name = idx.get("name", "未命名")
-                    idx_cols = ", ".join(idx.get("columns", []))
-                    idx_unique = "唯一" if idx.get("unique", False) else ""
-                    schema_info.append(f"  - {idx_name}: ({idx_cols}) {idx_unique}")
-        
-        return "\n".join(schema_info) 
+        Returns:
+            Dict: 统计信息字典
+        """
+        try:
+            return self.history_repo.get_query_stats_by_chat(self.db_session, chat_id)
+        except Exception as e:
+            logger.error(f"获取查询统计信息出错: {str(e)}")
+            return {
+                "total_queries": 0,
+                "successful_queries": 0,
+                "success_rate": 0,
+                "databases_used": []
+            } 

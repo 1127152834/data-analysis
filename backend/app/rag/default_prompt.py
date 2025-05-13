@@ -199,6 +199,12 @@ Context information is below.
 {{context_str}}
 
 ---------------------
+Database query results are below.
+---------------------
+
+{{database_results}}
+
+---------------------
 
 Answer Format:
 
@@ -220,6 +226,9 @@ Each footnote must correspond to a unique source. Do not use the same source for
 knowledge://chunk/id/{块ID} - ID格式（推荐）
 -->
 
+When using database query results as sources, use the following footnote format:
+[^n]: [Database: DatabaseName](database://query/id/{database_connection_id})
+
 ---------------------
 
 Answer Language:
@@ -232,6 +241,8 @@ If the language hint is not provided, use the language that the original questio
 As a customer support assistant, please do not fabricate any knowledge. If you cannot get knowledge from the context, please just directly state "you do not know", rather than constructing nonexistent and potentially fake information!!!
 
 First, analyze the provided context information without assuming prior knowledge. Identify all relevant aspects of knowledge contained within. Then, from various perspectives and angles, answer questions as thoroughly and comprehensively as possible to better address and resolve the user's issue.
+
+When database query results are available, integrate them with knowledge base information to provide a comprehensive answer. When appropriate, explain what the database query shows and how it relates to the knowledge from documents.
 
 The Original questions is:
 
@@ -397,32 +408,167 @@ Follow-up question:
 Goal:
 """
 
-DEFAULT_DATABASE_QUERY_PROMPT = """\
-作为一个SQL生成专家，根据用户问题和数据库表结构信息生成精确的SQL查询。
+
+DEFAULT_TEXT_TO_SQL_PROMPT = """
+你是一位SQL专家，将自然语言问题转换为准确的SQL查询语句。
+
+### 上下文信息
+数据库类型: {dialect}
+数据库表信息:
+{schema}
+
+### 指导原则
+1. 只生成SQL语句，不要包含任何解释或注释
+2. 保证SQL语法正确
+3. 确保使用表的完整列名，避免使用通配符(*)
+4. 查询结果应限制在1000行以内
+5. 使用标准SQL语法，无特殊拓展
+6. 对文本比较使用适当的模糊匹配(LIKE)
+7. 添加适当的联接条件以避免笛卡尔积
+8. 注意日期类型的格式和比较方式
+9. 中文问题也要用英文SQL语法回答
+10. 使用简洁但易读的格式，适当缩进
+
+### 用户问题
+{query_str}
+
+### SQL查询
+"""
+
+DEFAULT_RESPONSE_SYNTHESIS_PROMPT = """
+你是一位数据分析专家，根据SQL查询结果回答用户问题。
+
+### 用户原始问题
+{query_str}
+
+### 执行的SQL查询
+{sql_query}
+
+### SQL查询结果
+{context_str}
+
+### 回答要求
+1. 用自然、友好的语言回答用户问题
+2. 直接回答问题，无需介绍你在做什么
+3. 适当解释数据结果含义
+4. 如有数字，使用合适的格式化和单位
+5. 如果数据为空，明确指出未找到相关数据
+6. 如果数据量大，总结主要趋势和关键点
+7. 所有回答使用中文
+
+### 你的回答:
+"""
+
+# 新增：针对数据库查询的问题改写提示词模板
+DATABASE_AWARE_CONDENSE_QUESTION_PROMPT = """\
+Current Date: {{current_date}}
+---------------------
+The prerequisite questions and their relevant knowledge for the user's main question.
+---------------------
+
+{{graph_knowledges}}
 
 ---------------------
-数据库结构信息:
+
+Task:
+Given the conversation between the Human and Assistant, along with the follow-up message from the Human, and the provided prerequisite questions and relevant knowledge, refine the Human's follow-up message into a standalone, detailed question that is optimized for both document retrieval and potential database queries.
+
+Instructions:
+1. Focus on the latest query from the Human, ensuring it is given the most weight.
+2. Identify Database Query Potential:
+   - Determine if the question involves querying structured data (e.g., statistics, specific records, counts, aggregations)
+   - If yes, reformulate to emphasize precise entities, attributes, conditions, and time ranges that would be relevant for a SQL query
+   - Include specific table names or data categories if mentioned in the conversation
+3. Incorporate Key Information:
+   - Use the prerequisite questions and their relevant knowledge to add specific details to the follow-up question
+   - Replace ambiguous terms or references with precise information from the provided knowledge
+4. Utilize Conversation Context:
+   - Incorporate relevant context from the conversation history to enhance specificity
+5. Optimize for Hybrid Retrieval:
+   - For potential database questions, ensure the refined question includes both the data request and any contextual information needed
+   - For knowledge-based questions, emphasize specific terms to maximize vector search effectiveness
+6. Grounded and Factual:
+   - Ensure the refined question is based directly on the user's question and the provided knowledge
+7. Give the language hint for the answer:
+   - Add a hint like "(Answer language: Chinese)" using the same language as the original question
+
+Example 1 (Database-focused):
+
+Chat History:
+H: "I need to analyze our sales performance."
+A: "I can help with that. What specific aspects of sales performance are you interested in?"
+
+Follow-up Question:
+"How many orders did we receive last month compared to the previous month?"
+
+Refined Standalone Question:
+"What is the total count of orders in our system for the previous month (May 2023) compared to the month before that (April 2023)? Please include the percentage change between these two periods. (Answer language: English)"
+
+Example 2 (Hybrid knowledge and data):
+
+Chat History:
+H: "Tell me about our customer retention strategies."
+A: "Our company employs several customer retention strategies including loyalty programs and personalized marketing."
+
+Follow-up Question:
+"What's the retention rate for customers who joined in 2022?"
+
+Refined Standalone Question:
+"What is the customer retention rate specifically for users who registered in 2022, and how does this compare to our established customer retention strategies and industry benchmarks? (Answer language: English)"
+
+Your Turn:
+
+Chat history:
+
+{{chat_history}}
+
 ---------------------
 
-{{database_schema}}
+Followup question:
+
+{{question}}
 
 ---------------------
-用户问题:
----------------------
 
-{{user_question}}
+Refined standalone question:
+"""
 
----------------------
-任务:
-根据上述数据库结构和用户问题，生成一个准确、安全且高效的SQL查询语句。
+# 新增：混合内容（知识库+数据库结果）的回答生成提示词模板
+HYBRID_RESPONSE_SYNTHESIS_PROMPT = """\
+You are an AI assistant with access to both knowledge documents and database query results. Your task is to synthesize information from both sources to provide a comprehensive and accurate answer.
 
-要求:
-1. 只生成能直接执行的SQL语句，不要包含任何注释或解释
-2. 使用表结构中提供的确切字段名，不要添加不存在的字段
-3. 对于模糊查询，使用适当的LIKE语句
-4. 如果需要多表查询，使用恰当的JOIN操作
-5. 确保查询语句安全、高效
-6. 如果无法根据提供信息生成查询，返回"无法生成查询"
+### Information Sources
 
-SQL查询:
+1. Knowledge Base Documents:
+{{context_str}}
+
+2. Database Query Results:
+{{database_results}}
+
+### Guidelines for Answer Synthesis
+
+1. Integration Priority:
+   - For factual information and specific data points, prioritize database query results
+   - For explanations, concepts, and context, prioritize knowledge documents
+   - When sources conflict, database results generally represent more current information
+
+2. Source Attribution:
+   - Clearly indicate when information comes from database queries versus knowledge documents
+   - Use the footnote syntax provided in the instructions
+
+3. Completeness and Accuracy:
+   - Address all aspects of the user's question
+   - When database results contain multiple records, summarize patterns or trends rather than listing all entries
+   - Present numerical data in a readable format (tables, bullets, etc. as appropriate)
+   - For empty database results, explain the significance (e.g., "No matching records found, which indicates...")
+
+4. Format and Style:
+   - Use the same language as the query
+   - Maintain a helpful, informative tone
+   - Structure the answer logically, typically presenting database findings first, then supporting with knowledge context
+
+### User Question
+{{query_str}}
+
+### Your Answer:
 """

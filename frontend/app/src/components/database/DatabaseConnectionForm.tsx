@@ -48,7 +48,7 @@ interface ConfigType {
 const baseSchema = z.object({
   name: z.string().min(1, '请输入连接名称'),
   description: z.string().optional(),
-  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sql_server', 'oracle']),
+  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle']),
   config: z.record(z.any()),
   read_only: z.boolean(),
   test_connection: z.boolean(),
@@ -205,7 +205,7 @@ export function DatabaseConnectionForm({ mode, existingConnection, onSuccess }: 
     switch (data.database_type) {
       case 'mysql':
       case 'postgresql':
-      case 'sql_server':
+      case 'sqlserver':
         if (!config.host) throw new Error('请输入主机地址');
         if (!config.port) throw new Error('请输入端口');
         if (!config.user) throw new Error('请输入用户名');
@@ -352,7 +352,7 @@ export function DatabaseConnectionForm({ mode, existingConnection, onSuccess }: 
                       let defaultPort = 0;
                       if (type === 'mysql') defaultPort = 3306;
                       else if (type === 'postgresql') defaultPort = 5432;
-                      else if (type === 'sql_server') defaultPort = 1433;
+                      else if (type === 'sqlserver') defaultPort = 1433;
                       else if (type === 'oracle') defaultPort = 1521;
                       
                       form.setFieldValue('config', { 
@@ -405,7 +405,7 @@ export function DatabaseConnectionForm({ mode, existingConnection, onSuccess }: 
     switch (databaseType) {
       case 'mysql':
       case 'postgresql':
-      case 'sql_server':
+      case 'sqlserver':
         return (
           <>
             <SubSection title="连接设置">

@@ -1,7 +1,9 @@
 import logging
 import dspy
+from datetime import datetime
+from enum import Enum
+from typing import Optional, List, TYPE_CHECKING, Dict, Union, Any
 
-from typing import Optional, List
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -22,6 +24,11 @@ from app.models import (
     ChatEngine as DBChatEngine,
 )
 from app.repositories import chat_engine_repo, knowledge_base_repo
+
+# 处理循环导入问题
+if TYPE_CHECKING:
+    from app.models.database_connection import DatabaseConnection
+
 from app.rag.default_prompt import (
     DEFAULT_INTENT_GRAPH_KNOWLEDGE,
     DEFAULT_NORMAL_GRAPH_KNOWLEDGE,
@@ -30,11 +37,39 @@ from app.rag.default_prompt import (
     DEFAULT_FURTHER_QUESTIONS_PROMPT,
     DEFAULT_GENERATE_GOAL_PROMPT,
     DEFAULT_CLARIFYING_QUESTION_PROMPT,
-    DEFAULT_DATABASE_QUERY_PROMPT,
+    DEFAULT_TEXT_TO_SQL_PROMPT,
+    DEFAULT_RESPONSE_SYNTHESIS_PROMPT,
+    DATABASE_AWARE_CONDENSE_QUESTION_PROMPT,
+    HYBRID_RESPONSE_SYNTHESIS_PROMPT,
 )
 
+from llama_index.core.tools import ToolMetadata
 
 logger = logging.getLogger("chat_engine")
+
+# 数据库路由策略枚举
+class DatabaseRoutingStrategy(str, Enum):
+    """
+    数据库路由策略枚举
+    
+    定义系统如何在多个可用数据库之间进行选择的策略
+    """
+    SINGLE_BEST = "single_best"      # 只选择得分最高的单个数据库进行查询
+    ALL_QUALIFIED = "all_qualified"  # 查询所有得分超过阈值的数据库
+    TOP_N = "top_n"                  # 查询得分最高的N个数据库
+    MANUAL = "manual"                # 手动模式，由用户明确指定要查询的数据库
+    CONTEXTUAL = "contextual"        # 上下文感知模式，基于对话历史和上下文选择数据库
+
+# 用户数据库访问权限级别枚举
+class UserAccessLevel(str, Enum):
+    """
+    用户数据库访问权限级别
+    
+    定义用户对数据库的访问权限级别，从只读到管理员
+    """
+    READ_ONLY = "read_only"     # 只读权限，只能执行SELECT查询
+    READ_WRITE = "read_write"   # 读写权限，可以执行SELECT、INSERT、UPDATE等操作
+    ADMIN = "admin"             # 管理员权限，可以执行所有操作，包括结构更改
 
 
 class LLMOption(BaseModel):
@@ -65,8 +100,18 @@ class LLMOption(BaseModel):
     # 用于理解用户目标的提示词模板
     generate_goal_prompt: str = DEFAULT_GENERATE_GOAL_PROMPT
     
-    # 用于将自然语言转换为SQL查询的提示词模板
-    database_query_prompt: str = DEFAULT_DATABASE_QUERY_PROMPT
+    
+    # 用于LlamaIndex NLSQLTableQueryEngine将自然语言转换为SQL查询的提示词模板
+    text_to_sql_prompt: str = DEFAULT_TEXT_TO_SQL_PROMPT
+    
+    # 用于LlamaIndex NLSQLTableQueryEngine将SQL查询结果合成自然语言回答的提示词模板
+    response_synthesis_prompt: str = DEFAULT_RESPONSE_SYNTHESIS_PROMPT
+    
+    # 针对数据库查询优化的问题改写提示词模板
+    database_aware_condense_question_prompt: str = DATABASE_AWARE_CONDENSE_QUESTION_PROMPT
+    
+    # 混合内容（知识库+数据库结果）的回答生成提示词模板
+    hybrid_response_synthesis_prompt: str = HYBRID_RESPONSE_SYNTHESIS_PROMPT
 
 
 class VectorSearchOption(VectorSearchRetrieverConfig):
@@ -137,6 +182,74 @@ class LinkedEntity(BaseModel):
     id: int
 
 
+class LinkedDatabaseConfig(BaseModel):
+    """
+    链接数据库配置类
+    
+    定义了单个数据库连接的配置项，包括优先级和业务描述等。
+    """
+    # 数据库连接的唯一标识符
+    id: int
+    
+    # 数据库连接的优先级（值越小优先级越高）
+    priority: int = 0
+    
+    # 业务描述覆盖（如果设置，将覆盖数据库连接中的description_for_llm）
+    business_description_override: Optional[str] = None
+    
+    # 是否为只读模式（安全模式，只允许SELECT查询）
+    read_only: Optional[bool] = None
+    
+    # 是否允许直接执行用户提供的SQL（高级选项，默认不允许）
+    allow_direct_sql: bool = False
+
+    # 此连接的表白名单（仅这些表可被查询，为空表示允许所有表）
+    allowed_tables: List[str] = Field(default_factory=list)
+    
+    # 此连接的表黑名单（这些表不可被查询）
+    forbidden_tables: List[str] = Field(default_factory=list)
+    
+    # 此连接的列黑名单（格式："table_name.column_name"）
+    forbidden_columns: List[str] = Field(default_factory=list)
+    
+    # 此连接的行数限制（覆盖全局设置）
+    max_results_override: Optional[int] = None
+    
+    # 此连接的SQL操作类型（覆盖全局设置）
+    allowed_operations_override: Optional[List[str]] = None
+    
+    # 是否启用该数据库连接（可用于临时禁用）
+    enabled: bool = True
+    
+    # 是否为主要数据库（在多数据库环境中可用于设置首选查询目标）
+    is_primary: bool = False
+    
+    # 特定于此连接的敏感列名模式（优先于全局设置）
+    sensitive_column_patterns_override: Optional[List[str]] = None
+    
+    # 访问权限控制配置
+    # 允许访问此数据库的用户ID列表，为空表示允许所有用户
+    allowed_user_ids: List[str] = Field(default_factory=list)
+    
+    # 禁止访问此数据库的用户ID列表
+    forbidden_user_ids: List[str] = Field(default_factory=list)
+    
+    # 允许访问此数据库的用户角色列表
+    allowed_user_roles: List[str] = Field(default_factory=list)
+    
+    # 访问此数据库需要的最低权限级别
+    access_level_required: UserAccessLevel = UserAccessLevel.READ_ONLY
+    
+    # 是否启用敏感查询保护（对潜在危险操作进行额外验证）
+    sensitive_queries_protection: bool = True
+    
+    # 业务场景标签，用于智能路由
+    business_tags: List[str] = Field(default_factory=list)
+    
+    # 路由权重调整因子(0.0-2.0)，用于手动调整路由得分
+    routing_weight: float = 1.0
+
+
 class DatabaseOption(BaseModel):
     """
     数据库选项配置类
@@ -146,14 +259,146 @@ class DatabaseOption(BaseModel):
     # 是否启用数据库查询功能
     enabled: bool = False
     
-    # 关联的数据库连接列表
+    # 关联的数据库连接(旧版单连接配置，保留用于向后兼容)
     linked_database_connections: List[LinkedEntity] = Field(default_factory=list)
     
-    # 是否为只读模式（安全模式，只允许SELECT查询）
+    # 关联的数据库配置列表(新版多连接配置)
+    linked_database_configs: List[LinkedDatabaseConfig] = Field(default_factory=list)
+    
+    # 全局只读模式（安全模式，只允许SELECT查询）
     read_only: bool = True
     
     # 查询结果的最大行数
     max_results: int = 100
+    
+    # 最大生成SQL数量（当单个问题可能需要多个SQL查询时）
+    max_queries_per_question: int = 3
+    
+    # 是否在回答中显示生成的SQL
+    show_sql_in_answer: bool = True
+    
+    # 查询超时时间（秒）
+    query_timeout: int = 30
+    
+    # 是否允许聊天引擎自动选择最合适的数据库
+    auto_select_database: bool = True
+    
+    # 数据库上下文行为模式
+    # standalone: 每次查询独立处理
+    # conversational: 在对话上下文中理解查询
+    # hybrid: 混合模式，优先考虑当前查询，但保留上下文
+    context_mode: str = "hybrid"
+    
+    # 是否允许跨库查询
+    allow_cross_database_queries: bool = False
+    
+    # 表描述缓存过期时间（秒），0表示不缓存
+    table_schema_cache_ttl: int = 3600
+    
+    # 查询模式选择
+    # auto: 自动判断是否需要进行数据库查询
+    # always: 始终尝试进行数据库查询
+    # explicit: 只有当用户明确表示要查询数据库时才进行查询
+    # mixed: 同时使用数据库查询和知识库检索，并合并结果
+    query_mode: str = "auto"
+    
+    # 权限设置
+    # 允许的SQL操作类型（例如：["SELECT"]或["SELECT", "INSERT", "UPDATE"]）
+    allowed_operations: List[str] = Field(default_factory=lambda: ["SELECT"])
+    
+    # 是否保留敏感列（如密码、token等）
+    mask_sensitive_data: bool = True
+    
+    # 敏感列名模式（用于自动识别和屏蔽敏感数据）
+    sensitive_column_patterns: List[str] = Field(
+        default_factory=lambda: [
+            "password", "passwd", "secret", "token", "key", 
+            "auth", "credential", "hash", "salt", "pin", "ssn", 
+            "credit", "card", "cvv", "social"
+        ]
+    )
+    
+    # 查询历史记录设置
+    # 是否保存查询历史
+    save_query_history: bool = True
+    
+    # 保存历史查询的最大数量
+    max_query_history: int = 100
+    
+    # 用户反馈设置
+    # 是否允许用户反馈查询结果
+    allow_user_feedback: bool = True
+    
+    # 安全限制
+    # 单次查询的最大执行时间（秒）
+    max_execution_time: int = 60
+    
+    # 单次查询允许扫描的最大行数
+    max_scan_rows: Optional[int] = 10000
+    
+    # 数据库路由系统配置
+    # 路由分数阈值，只有得分高于此值的数据库才会被查询
+    routing_score_threshold: float = 0.3
+    
+    # 多数据库查询策略
+    # single_best: 只查询得分最高的数据库
+    # all_qualified: 查询所有得分超过阈值的数据库
+    # top_n: 查询得分最高的N个数据库
+    # manual: 用户手动指定要查询的数据库
+    # contextual: 基于对话上下文智能选择数据库
+    routing_strategy: DatabaseRoutingStrategy = DatabaseRoutingStrategy.SINGLE_BEST
+    
+    # top_n策略的N值
+    routing_top_n: int = 2
+    
+    # 路由结果是否包含在最终结果中（用于调试）
+    show_routing_info: bool = False
+    
+    # 是否使用LLM进行路由决策（高级选项，可能增加延迟）
+    use_llm_for_routing: bool = False
+    
+    # LLM路由提示词模板
+    llm_routing_prompt_template: str = """
+    你是一个智能的数据库路由专家。给定用户问题和候选数据库的描述，你需要决定哪些数据库最适合回答这个问题。
+    
+    用户问题: {question}
+    
+    可用数据库:
+    {database_descriptions}
+    
+    请为每个数据库评分(0.0-1.0)，表示它对回答此问题的相关性。1.0表示非常相关，0.0表示完全不相关。
+    返回JSON格式的结果：
+    {{
+        "reasoning": "你的推理过程，解释为什么某些数据库更相关",
+        "scores": {{
+            "database_id_1": 0.9,
+            "database_id_2": 0.2,
+            ...
+        }}
+    }}
+    """
+    
+    # 应急回退策略（当所有数据库路由分数都低于阈值时）
+    # none: 不执行任何查询
+    # primary: 使用标记为主要的数据库
+    # any: 使用任意一个可用数据库
+    fallback_strategy: str = "none"
+    
+    # 审计设置
+    # 是否启用数据库操作审计
+    enable_audit_log: bool = True
+    
+    # 审计日志保留天数，0表示永久保存
+    audit_log_retention_days: int = 90
+    
+    # 是否启用访问控制
+    enable_access_control: bool = False
+    
+    # 默认用户访问权限级别
+    default_user_access_level: UserAccessLevel = UserAccessLevel.READ_ONLY
+    
+    # 是否启用增强的权限检查
+    enhanced_permission_check: bool = False
 
 
 class ChatEngineConfig(BaseModel):
@@ -249,6 +494,84 @@ class ChatEngineConfig(BaseModel):
         return knowledge_base_repo.must_get(
             session, self.knowledge_base.linked_knowledge_base.id
         )
+        
+    def get_linked_database_connections(self, session: Session) -> List["DatabaseConnection"]:
+        """
+        获取所有关联的数据库连接
+        
+        从新旧两种配置方式中获取所有数据库连接，并按照优先级排序
+        
+        参数:
+            session: 数据库会话对象
+            
+        返回值:
+            关联的数据库连接对象列表
+        """
+        from app.repositories.database_connection import DatabaseConnectionRepo
+        from app.models.database_connection import DatabaseConnection
+        
+        if not self.database.enabled:
+            return []
+            
+        db_repo = DatabaseConnectionRepo()
+        connection_ids = set()
+        
+        # 获取所有数据库连接ID（老配置方式）
+        for link in self.database.linked_database_connections:
+            connection_ids.add(link.id)
+            
+        # 获取所有数据库连接ID（新配置方式）
+        for config in self.database.linked_database_configs:
+            connection_ids.add(config.id)
+            
+        # 如果没有配置任何数据库连接，返回空列表
+        if not connection_ids:
+            return []
+            
+        # 获取所有数据库连接对象
+        connections = db_repo.get_by_ids(session, list(connection_ids))
+        
+        # 如果使用了新配置方式，按照优先级排序
+        if self.database.linked_database_configs:
+            # 创建ID到优先级的映射
+            priority_map = {
+                config.id: config.priority 
+                for config in self.database.linked_database_configs
+            }
+            
+            # 使用优先级排序（优先级值越小越靠前）
+            connections.sort(key=lambda conn: priority_map.get(conn.id, 999))
+            
+        return connections
+        
+    def get_database_connection_config(self, connection_id: int) -> Optional[LinkedDatabaseConfig]:
+        """
+        获取指定数据库连接的配置
+        
+        参数:
+            connection_id: 数据库连接ID
+            
+        返回值:
+            数据库连接配置对象或None
+        """
+        if not self.database.enabled:
+            return None
+            
+        # 在新配置方式中查找
+        for config in self.database.linked_database_configs:
+            if config.id == connection_id:
+                return config
+                
+        # 如果在新配置方式中未找到，则创建一个基于全局设置的默认配置
+        for link in self.database.linked_database_connections:
+            if link.id == connection_id:
+                return LinkedDatabaseConfig(
+                    id=connection_id,
+                    priority=999,  # 默认最低优先级
+                    read_only=self.database.read_only
+                )
+                
+        return None
 
     @classmethod
     def load_from_db(cls, session: Session, engine_name: str) -> "ChatEngineConfig":

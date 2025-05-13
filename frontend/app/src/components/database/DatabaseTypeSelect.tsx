@@ -28,7 +28,7 @@ export function DatabaseTypeSelect({ value, onChange, disabled }: DatabaseTypeSe
           { value: 'mysql' as DatabaseConnectionType, label: 'MySQL' },
           { value: 'postgresql' as DatabaseConnectionType, label: 'PostgreSQL' },
           { value: 'mongodb' as DatabaseConnectionType, label: 'MongoDB' },
-          { value: 'sql_server' as DatabaseConnectionType, label: 'SQL Server' },
+          { value: 'sqlserver' as DatabaseConnectionType, label: 'SQL Server' },
           { value: 'oracle' as DatabaseConnectionType, label: 'Oracle' },
         ];
         

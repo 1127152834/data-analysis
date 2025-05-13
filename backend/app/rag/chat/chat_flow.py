@@ -1,10 +1,11 @@
 # 导入必要的库和模块
 import json  # 用于处理JSON格式的数据
 import logging  # 用于记录程序运行日志
-from datetime import datetime, UTC  # 用于处理日期和时间，UTC表示协调世界时
-from typing import List, Optional, Generator, Tuple, Any  # 用于类型提示，帮助IDE和开发者理解变量类型
+from datetime import datetime, UTC, timedelta  # 用于处理日期和时间，UTC表示协调世界时
+from typing import List, Optional, Generator, Tuple, Any, Dict
 from urllib.parse import urljoin  # 用于构建完整的URL
 from uuid import UUID  # 用于处理通用唯一标识符
+import re
 
 # 导入网络请求库
 import requests  # 用于发送HTTP请求
@@ -35,13 +36,14 @@ from app.models import (
     ChatVisibility,  # 聊天可见性枚举
     ChatMessage as DBChatMessage,  # 数据库中的聊天消息模型
 )
+from app.models.database_connection import DatabaseConnection  # 数据库连接模型
 
 # 导入聊天引擎配置
 from app.rag.chat.config import ChatEngineConfig  # 聊天引擎配置类
 
 # 导入检索流程和数据结构
 from app.rag.chat.retrieve.retrieve_flow import SourceDocument, RetrieveFlow  # 检索流程和源文档模型
-from app.rag.chat.retrieve.database_query import DatabaseQueryResult  # 数据库查询结果模型
+from app.rag.chat.retrieve.database_query import DatabaseQueryManager
 
 # 导入流式协议相关组件
 from app.rag.chat.stream_protocol import (
@@ -64,6 +66,8 @@ from app.rag.utils import parse_goal_response_format  # 解析目标响应格式
 
 # 导入仓库
 from app.repositories import chat_repo  # 聊天仓库，用于数据库操作
+from app.repositories.database_connection import DatabaseConnectionRepo
+from app.repositories.database_query_history import DatabaseQueryHistoryRepo
 
 # 导入站点设置
 from app.site_settings import SiteSetting  # 站点设置，包含全局配置
@@ -344,7 +348,12 @@ class ChatFlow:
 
         # 步骤5: 使用优化后的问题搜索相关的文档块和执行数据库查询
         relevant_chunks, db_results = yield from self._search_relevance_chunks(
-            user_question=refined_question
+            query=refined_question,
+            chat_id=self.chat_id,
+            user_id=self.user.id,
+            retrieval_type=None,
+            limit=None,
+            filters=None,
         )
 
         # 步骤6: 使用优化的问题和相关文档块生成回答
@@ -512,9 +521,22 @@ class ChatFlow:
                         display="查询重写以增强信息检索",
                     ),
                 )
+                
+            # 检查问题是否可能涉及数据库查询
+            is_database_query = self._is_potential_database_query(user_question, chat_history)
+            
+            # 选择合适的提示词模板
+            if is_database_query and hasattr(self.engine_config.llm, 'database_aware_condense_question_prompt'):
+                # 如果可能是数据库查询且配置了专用模板，使用数据库查询优化的提示词模板
+                prompt_template = RichPromptTemplate(self.engine_config.llm.database_aware_condense_question_prompt)
+                logger.debug("使用数据库查询优化的问题改写模板")
+            elif refined_question_prompt:
+                # 使用传入的模板
+                prompt_template = RichPromptTemplate(refined_question_prompt)
+            else:
+                # 使用默认模板
+                prompt_template = RichPromptTemplate(self.engine_config.llm.condense_question_prompt)
 
-            # 创建提示模板
-            prompt_template = RichPromptTemplate(refined_question_prompt)
             # 使用快速LLM重写问题
             refined_question = self._fast_llm.predict(
                 prompt_template,
@@ -539,6 +561,204 @@ class ChatFlow:
 
             # 返回重写后的问题
             return refined_question
+            
+    def _is_potential_database_query(self, question: str, chat_history: List[ChatMessage] = []) -> bool:
+        """
+        判断问题是否可能需要数据库查询
+        
+        该方法使用多重策略判断:
+        1. LLM辅助判断 - 使用快速LLM分析问题和上下文，进行综合判断
+        2. 上下文理解 - 分析最近的对话记录，检测多轮查询意图的延续
+        3. 模式匹配 - 基于关键词和模式识别可能的数据库查询特征
+        
+        Args:
+            question: 用户问题
+            chat_history: 聊天历史
+            
+        Returns:
+            bool: 是否可能需要数据库查询
+        """
+        try:
+            # 1. 快速检查 - 如果聊天中有活跃的数据库会话，增加判断权重
+            from app.models.chat_meta import ChatMeta
+            
+            # 检查是否有活跃的数据库上下文
+            if hasattr(self, 'db_chat_obj') and self.db_chat_obj:
+                chat_id = self.db_chat_obj.id
+                # 尝试获取数据库上下文元数据
+                chat_meta = (
+                    self.db_session.query(ChatMeta)
+                    .filter(ChatMeta.chat_id == chat_id, ChatMeta.key == "db_context")
+                    .first()
+                )
+                
+                if chat_meta and chat_meta.value:
+                    context = json.loads(chat_meta.value)
+                    
+                    # 检查是否有最近的数据库查询
+                    has_recent_queries = "recent_queries" in context and context["recent_queries"]
+                    
+                    if has_recent_queries:
+                        # 检查最近查询是否在30分钟内
+                        now = datetime.now(UTC)
+                        recent_query = context["recent_queries"][0]
+                        query_time = datetime.fromisoformat(recent_query["timestamp"])
+                        
+                        if (now - query_time) < timedelta(minutes=30):
+                            # 检查问题是否可能是对前一个查询的跟进
+                            # 如果是简短问题，很可能是对前一个数据库查询的后续提问
+                            if len(question.split()) < 8 and not any(kw in question.lower() for kw in ["文档", "知识", "内容"]):
+                                logger.debug(f"检测到可能的数据库查询跟进问题: {question}")
+                                return True
+            
+            # 2. 使用快速LLM判断问题是否需要数据库查询
+            if self._fast_llm:
+                # 构造上下文和问题分析提示
+                context_str = ""
+                
+                # 添加聊天历史上下文
+                if chat_history and len(chat_history) > 0:
+                    recent_history = chat_history[-min(3, len(chat_history)):]
+                    context_messages = []
+                    for msg in recent_history:
+                        role = "用户" if msg.role == MessageRole.USER else "助手"
+                        context_messages.append(f"{role}: {msg.content}")
+                    
+                    if context_messages:
+                        context_str += "最近的对话:\n" + "\n".join(context_messages) + "\n\n"
+                
+                # 添加数据库信息
+                db_info = []
+                if hasattr(self.engine_config, 'database') and self.engine_config.database.enabled:
+                    for db_config in self.engine_config.database.linked_database_configs:
+                        db_info.append(f"- 数据库: {db_config.name} (类型: {db_config.type})")
+                
+                if db_info:
+                    context_str += "可用数据库:\n" + "\n".join(db_info) + "\n\n"
+                
+                # 构造判断提示
+                prompt = f"""请判断以下问题是否需要查询数据库来回答，仅回答"是"或"否"。
+
+上下文信息:
+{context_str}
+
+用户当前问题: {question}
+
+判断标准:
+1. 问题是否询问需要从数据库查询的结构化数据或统计信息
+2. 问题是否与数据分析、趋势计算或比较相关
+3. 问题是否是对前一个数据库查询的后续提问或扩展
+4. 问题中是否包含时间、数量、范围等需要精确数据回答的要素
+
+判断结果(仅回答"是"或"否"):"""
+
+                # 使用快速LLM进行判断
+                response = self._fast_llm.complete(prompt).text.strip().lower()
+                if "是" in response[:10]:
+                    logger.debug(f"LLM判断问题需要数据库查询: {question}")
+                    return True
+                elif "否" in response[:10]:
+                    # 如果LLM明确判断不需要，但问题具有明显数据特征，进行二次检查
+                    if any(kw in question.lower() for kw in ["数据", "统计", "多少", "数量", "趋势", "比较"]):
+                        logger.debug(f"LLM判断问题不需要数据库查询，但检测到数据关键词，进一步分析: {question}")
+                        # 继续进行关键词匹配检查
+                    else:
+                        return False
+            
+            # 3. 基于问题特征和关键词的模式匹配
+            
+            # 数据库相关关键词
+            db_keywords = [
+                "数据库", "查询", "sql", "表", "数据表", "记录", "行", "列",
+                "mysql", "postgresql", "mongodb", "database", "query",
+            ]
+            
+            # 数据分析相关关键词
+            data_keywords = [
+                "数据", "统计", "分析", "计算", "汇总", "平均", "总和", "最大", "最小",
+                "趋势", "比例", "占比", "分布", "分组", "排序", "排名", "top", "前几",
+            ]
+            
+            # 数据属性关键词
+            attribute_keywords = [
+                "销售", "收入", "利润", "成本", "收益", "支出", "价格", "金额",
+                "人数", "数量", "年龄", "工资", "薪资", "面积", "体积", "重量",
+                "百分比", "增长率", "降低率", "比率", "速度", "频率", "密度",
+            ]
+            
+            # 时间相关关键词
+            time_keywords = [
+                "今天", "昨天", "明天", "本周", "上周", "下周", "本月", "上个月", "下个月",
+                "今年", "去年", "明年", "季度", "年度", "每日", "每周", "每月", "每年",
+                "日期", "时间", "期间", "区间", "天", "月", "年", "小时", "分钟",
+            ]
+            
+            # 查询动作关键词
+            query_action_words = [
+                "查", "找", "获取", "列出", "显示", "给我", "告诉我", "计算", "统计",
+                "比较", "分析", "汇总", "报告", "总结", "检索", "提取",
+            ]
+            
+            # 问题中的量词和数字
+            quantity_patterns = [
+                r"多少", r"几", r"(\d+)个", r"(\d+)人", r"(\d+)次", r"百分之(\d+)",
+                r"(\d+)%", r"(\d+\.\d+)", r"第(\d+)", r"前(\d+)",
+            ]
+            
+            # 检测数据库相关关键词
+            question_lower = question.lower()
+            
+            # 如果包含直接的数据库关键词
+            if any(kw in question_lower for kw in db_keywords):
+                logger.debug(f"检测到数据库关键词，判断为潜在数据库查询: {question}")
+                return True
+            
+            # 至少有1个数据分析关键词 + 1个其他特征
+            has_data_keyword = any(kw in question_lower for kw in data_keywords)
+            has_attribute_keyword = any(kw in question_lower for kw in attribute_keywords)
+            has_time_keyword = any(kw in question_lower for kw in time_keywords)
+            has_query_action = any(kw in question_lower for kw in query_action_words)
+            has_quantity_pattern = any(re.search(pattern, question_lower) for pattern in quantity_patterns)
+            
+            # 特征组合判断
+            if has_data_keyword and (has_attribute_keyword or has_time_keyword or has_quantity_pattern):
+                logger.debug(f"检测到数据分析关键词和属性/时间/数量特征，判断为潜在数据库查询: {question}")
+                return True
+            
+            if has_query_action and (has_attribute_keyword or has_data_keyword) and (has_time_keyword or has_quantity_pattern):
+                logger.debug(f"检测到查询动作、数据属性和时间/数量特征，判断为潜在数据库查询: {question}")
+                return True
+            
+            # 4. 检查聊天历史中的上下文延续
+            if chat_history and len(chat_history) >= 2:
+                # 获取最后一次助手回复
+                last_assistant_msg = None
+                for msg in reversed(chat_history):
+                    if msg.role == MessageRole.ASSISTANT:
+                        last_assistant_msg = msg.content
+                        break
+                
+                if last_assistant_msg:
+                    # 检查上一次回复是否包含数据库查询结果的特征
+                    db_result_indicators = [
+                        "查询结果", "数据显示", "根据数据库", "数据库中", "查询到", "数据记录",
+                        "行数据", "返回结果", "统计结果", "分析结果", "表中数据"
+                    ]
+                    
+                    if any(indicator in last_assistant_msg for indicator in db_result_indicators):
+                        # 如果当前问题是简短的后续提问
+                        if len(question.split()) < 10:
+                            logger.debug(f"检测到对数据库查询结果的后续提问: {question}")
+                            return True
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"判断是否为数据库查询时出错: {str(e)}")
+            
+            # 使用简单的关键词匹配作为回退策略
+            fallback_keywords = ["数据", "查询", "统计", "多少", "数量", "比例", "趋势"]
+            return any(kw in question.lower() for kw in fallback_keywords)
 
     def _clarify_question(
         self,
@@ -603,20 +823,31 @@ class ChatFlow:
             return need_clarify, need_clarify_response
 
     def _search_relevance_chunks(
-        self, user_question: str
-    ) -> Generator[ChatEvent, None, Tuple[List[NodeWithScore], List[DatabaseQueryResult]]]:
+        self,
+        query: str,
+        chat_id: str,
+        user_id: str,
+        retrieval_type: str = None,
+        limit: int = None,
+        filters: Optional[Dict] = None,
+    ) -> Generator[ChatEvent, None, Tuple[List[NodeWithScore], List[NodeWithScore]]]:
         """
         搜索与问题最相关的文档块和执行数据库查询
         
-        参数:
-            user_question: 用户问题（可能是已重写的）
+        Args:
+            query: 查询文本
+            chat_id: 对话ID
+            user_id: 用户ID
+            retrieval_type: 检索类型
+            limit: 结果数量限制
+            filters: 过滤条件
             
-        返回:
-            生成器，最终产生带有相关度分数的文档节点列表和数据库查询结果的元组
+        Returns:
+            生成器，最终产生带有相关度分数的文档节点列表和数据库查询结果节点列表的元组
         """
         # 使用追踪管理器记录相关文档搜索的性能
         with self._trace_manager.span(
-            name="search_relevance_chunks", input=user_question
+            name="search_relevance_chunks", input=query
         ) as span:
             # 发送步骤提示
             yield ChatEvent(
@@ -626,38 +857,472 @@ class ChatFlow:
                     display="检索最相关的文档",
                 ),
             )
-
-            # 调用检索流程搜索相关文档块和执行数据库查询
-            relevance_chunks, db_results = self.retrieve_flow.retrieve(user_question)
-
-            # 如果有数据库查询结果，显示数据库查询提示
-            if db_results and len(db_results) > 0:
-                yield ChatEvent(
-                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                    payload=ChatStreamMessagePayload(
-                        state=ChatMessageSate.DATABASE_QUERY,
-                        display="执行数据库查询",
-                        context={"db_results_count": len(db_results)},
-                    ),
-                )
-
+            
+            # 获取对话级别的数据库上下文
+            db_nodes = []
+            
+            # 如果数据库查询功能已启用，执行数据库查询
+            if (
+                hasattr(self.engine_config, "database")
+                and self.engine_config.database.enabled
+                and self.engine_config.database.linked_database_configs
+            ):
+                try:
+                    # 获取对话级别的数据库上下文
+                    chat_db_context = self._get_database_context(chat_id, user_id)
+                    
+                    # 执行数据库查询
+                    db_query_manager = DatabaseQueryManager(
+                        self.db_session, self.engine_config, self._llm
+                    )
+                    
+                    # 传递对话上下文给查询管理器
+                    db_results = db_query_manager.query_databases(
+                        question=query, 
+                        user_id=user_id,
+                        context=chat_db_context
+                    )
+                    
+                    # 将数据库查询结果转换为NodeWithScore
+                    if db_results:
+                        db_nodes = self.retrieve_flow._process_db_results(db_results)
+                        
+                        # 如果有数据库查询结果，显示数据库查询提示
+                        if db_nodes and len(db_nodes) > 0:
+                            yield ChatEvent(
+                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                                payload=ChatStreamMessagePayload(
+                                    state=ChatMessageSate.DATABASE_QUERY,
+                                    display="执行数据库查询",
+                                    context={"db_results_count": len(db_nodes)},
+                                ),
+                            )
+                except Exception as e:
+                    logger.error(f"数据库查询失败: {str(e)}")
+                    db_nodes = []
+            
+            # 调用检索流程搜索相关文档块
+            relevance_chunks = self.retrieve_flow.retrieve_from_knowledge_base(query)
+            
             # 记录追踪结果
             span.end(
                 output={
                     "relevance_chunks": relevance_chunks,
-                    "db_results_count": len(db_results) if db_results else 0,
+                    "db_results_count": len(db_nodes) if db_nodes else 0,
                 }
             )
-
+            
             # 返回相关文档块和数据库查询结果
-            return relevance_chunks, db_results
+            return relevance_chunks, db_nodes
+
+    def _get_database_context(self, chat_id: UUID, user_id: UUID) -> Dict[str, Any]:
+        """
+        获取对话级别的数据库上下文信息
+        
+        用于控制特定对话中的数据库访问权限和偏好设置，以及维护多轮查询的上下文
+        
+        Args:
+            chat_id: 对话ID
+            user_id: 用户ID
+            
+        Returns:
+            Dict[str, Any]: 数据库上下文信息，包含权限、历史、表结构等
+        """
+        try:
+            from app.models.chat_meta import ChatMeta
+            from app.rag.chat.retrieve.database_query import DatabaseQueryManager
+            
+            # 1. 获取聊天元数据记录中的数据库上下文
+            chat_meta = (
+                self.db_session.query(ChatMeta)
+                .filter(ChatMeta.chat_id == chat_id, ChatMeta.key == "db_context")
+                .first()
+            )
+            
+            # 检查元数据是否存在且未过期
+            if chat_meta and chat_meta.value:
+                context = json.loads(chat_meta.value)
+                # 检查缓存是否过期（默认30分钟）
+                cache_time = datetime.fromisoformat(context.get("cache_time", ""))
+                if datetime.now(UTC) - cache_time < timedelta(minutes=30):
+                    logger.debug(f"使用缓存的数据库上下文，聊天ID: {chat_id}")
+                    return context
+            
+            # 2. 构建新的数据库上下文
+            db_context = {
+                "chat_id": str(chat_id),
+                "user_id": str(user_id),
+                "cache_time": datetime.now(UTC).isoformat(),
+            }
+            
+            # 3. 获取数据库权限信息
+            db_restrictions = self._get_chat_db_restrictions(chat_id, user_id)
+            if db_restrictions:
+                db_context["permissions"] = db_restrictions.get("permissions", {})
+            
+            # 4. 获取最近的查询历史
+            db_query_manager = DatabaseQueryManager(self.db_session, self.engine_config, self._llm)
+            recent_queries = db_query_manager.get_recent_queries(
+                chat_id=chat_id,
+                limit=5,
+                time_window=timedelta(hours=1)
+            )
+            
+            # 将查询历史转换为上下文格式
+            if recent_queries:
+                query_history = []
+                for query in recent_queries:
+                    history_item = {
+                        "database": query.connection_name,
+                        "question": query.question,
+                        "query": query.query,
+                        "success": query.error is None,
+                        "timestamp": query.executed_at.isoformat(),
+                        "rows_returned": query.rows_returned or 0
+                    }
+                    query_history.append(history_item)
+                
+                db_context["recent_queries"] = query_history
+            
+            # 5. 获取查询统计信息
+            query_stats = db_query_manager.get_query_statistics(chat_id)
+            if query_stats:
+                db_context["query_stats"] = query_stats
+            
+            # 6. 从聊天记录获取用户指定的数据库
+            chat_messages = self._get_latest_chat_messages(chat_id, limit=5)
+            specified_db = self._extract_database_instruction(chat_messages)
+            if specified_db:
+                db_context["specified_database_id"] = specified_db
+            
+            # 7. 获取推荐的数据库连接（基于历史和权限）
+            recommended_dbs = []
+            
+            # 首先添加用户指定的数据库
+            if specified_db and str(specified_db) in db_context.get("permissions", {}):
+                db_repo = DatabaseConnectionRepo()
+                specified_db_obj = db_repo.get_by_id(self.db_session, specified_db)
+                if specified_db_obj:
+                    recommended_dbs.append({
+                        "id": specified_db_obj.id,
+                        "name": specified_db_obj.name,
+                        "type": specified_db_obj.db_type,
+                        "score": 1.0,  # 用户明确指定，得分最高
+                        "reason": "用户指定"
+                    })
+            
+            # 然后添加历史查询过的数据库
+            if "query_stats" in db_context and "databases_used" in db_context["query_stats"]:
+                for db_info in db_context["query_stats"]["databases_used"]:
+                    # 检查是否已经添加过
+                    if not any(r["id"] == db_info["connection_id"] for r in recommended_dbs):
+                        # 检查权限
+                        if str(db_info["connection_id"]) in db_context.get("permissions", {}):
+                            recommended_dbs.append({
+                                "id": db_info["connection_id"],
+                                "name": db_info["connection_name"],
+                                "type": db_info["database_type"],
+                                "score": 0.8,  # 历史查询的数据库得分较高
+                                "reason": "历史查询"
+                            })
+            
+            # 添加推荐的数据库到上下文
+            if recommended_dbs:
+                db_context["recommended_databases"] = recommended_dbs
+            
+            # 8. 保存上下文到元数据
+            if chat_meta:
+                chat_meta.value = json.dumps(db_context)
+                chat_meta.updated_at = datetime.now(UTC)
+            else:
+                from app.repositories.chat_meta import ChatMetaRepo
+                meta_repo = ChatMetaRepo()
+                meta_repo.create(
+                    self.db_session,
+                    ChatMeta(
+                        chat_id=chat_id,
+                        key="db_context",
+                        value=json.dumps(db_context),
+                    ),
+                )
+            
+            self.db_session.commit()
+            logger.debug(f"已更新聊天数据库上下文，聊天ID: {chat_id}")
+            
+            return db_context
+            
+        except Exception as e:
+            logger.warning(f"获取对话数据库上下文出错: {str(e)}")
+            # 返回基本上下文
+            return {
+                "chat_id": str(chat_id),
+                "user_id": str(user_id),
+                "cache_time": datetime.now(UTC).isoformat(),
+                "error": str(e)
+            }
+        
+    def _extract_database_instruction(self, chat_messages: List[Dict]) -> Optional[int]:
+        """
+        从聊天消息中提取数据库指令
+        
+        Args:
+            chat_messages: 聊天消息列表
+            
+        Returns:
+            Optional[int]: 指定的数据库ID，如果没有则返回None
+        """
+        # 数据库指令的关键词模式
+        db_instruction_patterns = [
+            r"使用(\w+)数据库",
+            r"切换到(\w+)数据库",
+            r"查询(\w+)数据库",
+            r"在(\w+)数据库中查找",
+            r"使用数据库\s*[:|：]?\s*(\w+)",
+            r"数据库\s*[:|：]?\s*(\w+)",
+        ]
+        
+        # 数据库名称到ID的映射（这里应该从实际配置中获取）
+        db_name_to_id = self._get_database_name_mapping()
+        
+        # 从最近的消息开始检查
+        for message in reversed(chat_messages):
+            if message["role"] != "user":
+                continue
+                
+            content = message.get("content", "")
+            
+            # 检查是否有明确的数据库ID指定
+            id_match = re.search(r"数据库ID\s*[:|：]?\s*(\d+)", content)
+            if id_match:
+                try:
+                    return int(id_match.group(1))
+                except ValueError:
+                    pass
+                    
+            # 检查是否有数据库名称指定
+            for pattern in db_instruction_patterns:
+                match = re.search(pattern, content)
+                if match:
+                    db_name = match.group(1)
+                    if db_name in db_name_to_id:
+                        return db_name_to_id[db_name]
+                        
+        return None
+        
+    def _get_database_name_mapping(self) -> Dict[str, str]:
+        """获取数据库名称到ID的映射"""
+        name_to_id_map = {}
+        
+        try:
+            # 使用DatabaseConnectionRepo
+            from app.repositories.database_connection import DatabaseConnectionRepo
+            db_repo = DatabaseConnectionRepo()
+            
+            # 获取所有数据库连接
+            if (hasattr(self.engine_config, 'database') and 
+                self.engine_config.database.enabled and 
+                self.engine_config.database.linked_database_configs):
+                
+                for db_config in self.engine_config.database.linked_database_configs:
+                    try:
+                        # 使用仓库方法获取数据库连接
+                        db_connection = db_repo.get_by_id(self.db_session, db_config.id)
+                        if db_connection:
+                            name_to_id_map[db_connection.name.lower()] = db_connection.id
+                    except Exception as e:
+                        logger.warning(f"获取数据库连接时出错: {str(e)}")
+        except Exception as e:
+            logger.warning(f"创建数据库名称映射时出错: {str(e)}")
+        
+        return name_to_id_map
+        
+    def _get_chat_db_restrictions(self, chat_id: UUID, user_id: UUID) -> Dict[str, Any]:
+        """
+        获取聊天的数据库访问限制和权限信息
+        
+        Args:
+            chat_id: 聊天ID
+            user_id: 用户ID
+            
+        Returns:
+            Dict: 数据库访问限制和权限信息
+        """
+        try:
+            from app.models.chat_meta import ChatMeta
+            
+            # 获取聊天元数据记录
+            chat_meta = (
+                self.db_session.query(ChatMeta)
+                .filter(ChatMeta.chat_id == chat_id, ChatMeta.key == "db_restrictions")
+                .first()
+            )
+            
+            # 检查元数据是否存在并且未过期
+            if chat_meta and chat_meta.value:
+                restrictions = json.loads(chat_meta.value)
+                # 检查缓存是否过期（默认1小时）
+                cache_time = datetime.fromisoformat(restrictions.get("cache_time", ""))
+                if datetime.now(UTC) - cache_time < timedelta(hours=1):
+                    logger.debug(f"使用缓存的数据库权限信息，聊天ID: {chat_id}")
+                    return restrictions
+            
+            # 获取用户数据库权限
+            user_permissions = self._get_user_db_permissions(user_id)
+            
+            # 获取历史查询的数据库
+            historical_dbs = self._get_historical_queried_databases(chat_id)
+            
+            # 构建数据库访问限制信息
+            restrictions = {
+                "user_id": str(user_id),
+                "chat_id": str(chat_id),
+                "permissions": user_permissions,
+                "historical_dbs": historical_dbs,
+                "cache_time": datetime.now(UTC).isoformat(),
+            }
+            
+            # 保存到聊天元数据
+            if chat_meta:
+                chat_meta.value = json.dumps(restrictions)
+                chat_meta.updated_at = datetime.now(UTC)
+            else:
+                from app.repositories.chat_meta import ChatMetaRepo
+                meta_repo = ChatMetaRepo()
+                meta_repo.create(
+                    self.db_session,
+                    ChatMeta(
+                        chat_id=chat_id,
+                        key="db_restrictions",
+                        value=json.dumps(restrictions),
+                    ),
+                )
+            
+            self.db_session.commit()
+            logger.debug(f"已更新聊天数据库权限缓存，聊天ID: {chat_id}")
+            
+            return restrictions
+        except Exception as e:
+            logger.warning(f"获取聊天数据库限制时出错: {str(e)}")
+            return {
+                "user_id": str(user_id),
+                "chat_id": str(chat_id),
+                "permissions": {},
+                "historical_dbs": [],
+                "cache_time": datetime.now(UTC).isoformat(),
+            }
+        
+    def _get_chat_tags(self, chat_id: str) -> List[str]:
+        """
+        获取对话的标签或业务场景
+        
+        Args:
+            chat_id: 对话ID
+            
+        Returns:
+            List[str]: 标签列表
+        """
+        # 这里应该从数据库或缓存中获取对话的标签
+        # 简化实现，实际中应替换为真实逻辑
+        return []
+        
+    def _get_user_db_permissions(self, user_id: str) -> Dict[str, bool]:
+        """获取用户的数据库访问权限"""
+        permissions = {}
+        
+        try:
+            # 导入必要的模型和仓库
+            from app.repositories.database_connection import DatabaseConnectionRepo
+            
+            db_repo = DatabaseConnectionRepo()
+            
+            # 获取用户权限
+            if (hasattr(self.engine_config, 'database') and 
+                self.engine_config.database.enabled and 
+                self.engine_config.database.linked_database_configs):
+                
+                for db_config in self.engine_config.database.linked_database_configs:
+                    try:
+                        # 使用仓库方法获取数据库连接
+                        db_connection = db_repo.get_by_id(self.db_session, db_config.id)
+                        
+                        if db_connection:
+                            # 简化实现：暂时默认所有用户都有访问权限
+                            # TODO: 当PermissionRepo实现完成后，替换为真实的权限检查
+                            permissions[db_connection.id] = True
+                    except Exception as e:
+                        logger.warning(f"获取用户数据库权限时出错: {str(e)}")
+        except Exception as e:
+            logger.warning(f"创建用户数据库权限映射时出错: {str(e)}")
+        
+        return permissions
+        
+    def _get_historical_queried_databases(self, chat_id: UUID) -> List[Dict[str, Any]]:
+        """
+        获取历史查询过的数据库记录
+        
+        Args:
+            chat_id: 对话ID
+            
+        Returns:
+            List[Dict[str, Any]]: 历史数据库查询记录，包含数据库连接信息和查询统计
+        """
+        try:
+            # 使用数据库查询历史仓库获取查询统计和历史
+            history_repo = DatabaseQueryHistoryRepo()
+            
+            # 获取聊天会话中的查询统计信息
+            db_stats = history_repo.get_query_stats_by_chat(self.db_session, chat_id)
+            
+            # 获取最近一小时的查询历史
+            recent_queries = history_repo.get_recent_queries_in_chat(
+                self.db_session,
+                chat_id=chat_id,
+                limit=10,
+                since=datetime.now(UTC) - timedelta(hours=1)
+            )
+            
+            # 构建结果列表
+            result = []
+            
+            # 添加数据库使用统计
+            if db_stats and db_stats.get("databases_used"):
+                for db_info in db_stats.get("databases_used", []):
+                    db_item = {
+                        "connection_id": db_info.get("connection_id"),
+                        "connection_name": db_info.get("connection_name"),
+                        "database_type": db_info.get("database_type"),
+                        "total_queries": db_info.get("query_count", 0),
+                        "successful_queries": db_info.get("successful_count", 0),
+                        "last_query_time": db_info.get("last_query_time"),
+                        "recent_queries": []
+                    }
+                    
+                    # 添加该数据库的最近查询
+                    for query in recent_queries:
+                        if query.connection_id == db_item["connection_id"]:
+                            db_item["recent_queries"].append({
+                                "question": query.question,
+                                "query": query.query,
+                                "is_successful": query.is_successful,
+                                "executed_at": query.executed_at,
+                                "rows_returned": query.rows_returned
+                            })
+                            
+                    result.append(db_item)
+            
+            logger.debug(f"获取到历史查询数据库: {len(result)} 个")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"获取历史查询数据库记录时出错: {str(e)}")
+            return []
 
     def _generate_answer(
         self,
         user_question: str,
         knowledge_graph_context: str,
         relevant_chunks: List[NodeWithScore],
-        db_results: Optional[List[DatabaseQueryResult]] = None,
+        db_results: Optional[List[NodeWithScore]] = None,
     ) -> Generator[ChatEvent, None, Tuple[str, List[SourceDocument]]]:
         """
         根据用户问题、知识图谱上下文、相关文档块和数据库查询结果生成回答
@@ -666,7 +1331,7 @@ class ChatFlow:
             user_question: 用户问题（可能是已重写的）
             knowledge_graph_context: 知识图谱上下文
             relevant_chunks: 相关文档块列表
-            db_results: 数据库查询结果列表
+            db_results: 数据库查询结果节点列表
             
         返回:
             生成器，最终产生回答文本和源文档列表的元组
@@ -675,21 +1340,37 @@ class ChatFlow:
         with self._trace_manager.span(
             name="generate_answer", input=user_question
         ) as span:
-            # 初始化响应合成器
-            text_qa_template = RichPromptTemplate(
-                template_str=self.engine_config.llm.text_qa_prompt
-            )
-            
             # 处理数据库查询结果
             database_context = ""
-            if db_results and len(db_results) > 0:
-                db_contexts = []
-                for result in db_results:
-                    if not result.error:  # 只添加成功的查询结果
-                        db_contexts.append(result.to_context_str())
+            has_db_results = db_results and len(db_results) > 0
+            
+            if has_db_results:
+                # 合并所有数据库节点的文本内容
+                db_contents = []
+                for node in db_results:
+                    # 每个节点的内容已经包含格式化后的数据库查询结果
+                    db_contents.append(node.node.text)
                 
-                if db_contexts:
-                    database_context = "\n\n数据库查询结果:\n" + "\n\n".join(db_contexts)
+                if db_contents:
+                    database_context = "\n\n数据库查询结果:\n" + "\n\n".join(db_contents)
+            
+            # 添加数据库查询结果节点到相关上下文中
+            all_nodes = relevant_chunks.copy()
+            if has_db_results:
+                all_nodes.extend(db_results)
+            
+            # 选择合适的提示词模板和响应合成方法
+            if has_db_results and relevant_chunks and hasattr(self.engine_config.llm, 'hybrid_response_synthesis_prompt'):
+                # 如果同时有知识库文档和数据库查询结果，使用混合内容模板
+                text_qa_template = RichPromptTemplate(
+                    template_str=self.engine_config.llm.hybrid_response_synthesis_prompt
+                )
+                logger.debug("使用混合内容响应合成模板")
+            else:
+                # 使用标准模板
+                text_qa_template = RichPromptTemplate(
+                    template_str=self.engine_config.llm.text_qa_prompt
+                )
             
             # 部分格式化模板，填入固定参数
             text_qa_template = text_qa_template.partial_format(
@@ -698,6 +1379,7 @@ class ChatFlow:
                 original_question=self.user_question,  # 原始问题
                 database_results=database_context,  # 数据库查询结果
             )
+
             # 获取响应合成器
             response_synthesizer = get_response_synthesizer(
                 llm=self._llm,  # 使用主LLM
@@ -708,7 +1390,7 @@ class ChatFlow:
             # 使用响应合成器生成回答
             response = response_synthesizer.synthesize(
                 query=user_question,  # 查询（可能是已重写的问题）
-                nodes=relevant_chunks,  # 相关文档块
+                nodes=all_nodes,  # 所有相关节点，包括文档和数据库查询结果
             )
             # 从响应中获取源文档
             source_documents = self.retrieve_flow.get_source_documents_from_nodes(
@@ -1134,3 +1816,40 @@ class ChatFlow:
 
         # 返回目标和响应格式
         return goal, response_format
+
+    def _get_latest_chat_messages(self, chat_id: str, limit: int = 5) -> List[Dict]:
+        """
+        获取最近的聊天消息
+        
+        Args:
+            chat_id: 聊天ID
+            limit: 最大返回消息数
+            
+        Returns:
+            List[Dict]: 聊天消息列表
+        """
+        try:
+            # 从数据库获取聊天消息
+            chat = chat_repo.get(self.db_session, chat_id)
+            if not chat:
+                return []
+                
+            # 获取所有消息并限制数量
+            messages = chat_repo.get_messages(self.db_session, chat)
+            if not messages:
+                return []
+                
+            # 转换为简化的字典格式，便于后续处理
+            result = []
+            for msg in messages[-limit:]:  # 取最新的limit条消息
+                result.append({
+                    "id": msg.id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "created_at": msg.created_at
+                })
+                
+            return result
+        except Exception as e:
+            logger.warning(f"获取最近聊天消息时出错: {str(e)}")
+            return []

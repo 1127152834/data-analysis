@@ -230,15 +230,73 @@ class MySQLConnector(BaseConnector):
                     "foreign_keys": foreign_keys
                 }
             
-            return {
+            metadata = {
                 "database": self.parameters.database,
                 "tables": tables_metadata,
                 "table_count": len(tables_metadata),
                 "updated_at": time.time()
             }
+            
+            return metadata
         except Exception as e:
-            logger.error(f"Failed to get metadata: {str(e)}")
+            logger.error(f"Failed to get database metadata: {str(e)}")
             return {"error": str(e)}
+    
+    def get_tables(self) -> List[str]:
+        """
+        获取数据库中的表列表
+        
+        返回:
+            List[str]: 表名列表
+        """
+        if not self.engine:
+            self.connect()
+            
+        if not self.engine:
+            return []
+            
+        try:
+            inspector = inspect(self.engine)
+            return inspector.get_table_names()
+        except Exception as e:
+            logger.error(f"Failed to get tables: {str(e)}")
+            return []
+    
+    def get_table_columns(self, table_name: str) -> List[Dict[str, Any]]:
+        """
+        获取指定表的列信息
+        
+        参数:
+            table_name: 表名
+            
+        返回:
+            List[Dict[str, Any]]: 列信息列表，每个列包含名称、类型等信息
+        """
+        if not self.engine:
+            self.connect()
+            
+        if not self.engine:
+            return []
+            
+        try:
+            inspector = inspect(self.engine)
+            columns = inspector.get_columns(table_name)
+            
+            # 转换为标准格式
+            result = []
+            for col in columns:
+                result.append({
+                    "name": col["name"],
+                    "type": str(col["type"]),
+                    "nullable": col.get("nullable", True),
+                    "default": col.get("default"),
+                    "primary_key": col.get("primary_key", False)
+                })
+            
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get columns for table '{table_name}': {str(e)}")
+            return []
     
     def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
@@ -248,11 +306,24 @@ class MySQLConnector(BaseConnector):
         
         参数:
             query: SQL查询字符串
-            params: 查询参数
+            params: 查询参数，可能包含timeout(超时秒数)和max_rows(最大返回行数)
             
         返回:
             Tuple[List[Dict[str, Any]], Optional[str]]: 查询结果和错误信息
         """
+        # 提取特殊参数
+        timeout = None
+        max_rows = None
+        query_params = {}
+        
+        if params:
+            if 'timeout' in params:
+                timeout = params.pop('timeout')
+            if 'max_rows' in params:
+                max_rows = params.pop('max_rows')
+            # 剩余参数作为查询参数
+            query_params = params
+        
         # 如果是只读模式，禁止执行非SELECT查询
         if self.connection_config.read_only:
             # 简单检查是否是SELECT查询（更完善的检查应使用SQL解析库）
@@ -268,25 +339,34 @@ class MySQLConnector(BaseConnector):
         
         try:
             # 使用低级API执行查询以获取字典格式结果
-            conn = pymysql.connect(
-                host=self.parameters.host,
-                port=self.parameters.port,
-                user=self.parameters.user,
-                password=self.parameters.password,
-                database=self.parameters.database,
-                charset=self.parameters.charset,
-                cursorclass=DictCursor
-            )
+            conn_args = {
+                "host": self.parameters.host,
+                "port": self.parameters.port,
+                "user": self.parameters.user,
+                "password": self.parameters.password,
+                "database": self.parameters.database,
+                "charset": self.parameters.charset,
+                "cursorclass": DictCursor
+            }
+            
+            # 添加超时设置
+            if timeout:
+                conn_args["connect_timeout"] = int(timeout)
+                
+            conn = pymysql.connect(**conn_args)
             
             with conn.cursor() as cursor:
-                if params:
-                    cursor.execute(query, params)
+                if query_params:
+                    cursor.execute(query, query_params)
                 else:
                     cursor.execute(query)
                 
                 if query.strip().upper().startswith("SELECT") or query.strip().upper().startswith("SHOW"):
                     # 对于查询操作，返回结果集
-                    results = cursor.fetchall()
+                    if max_rows:
+                        results = cursor.fetchmany(max_rows)
+                    else:
+                        results = cursor.fetchall()
                 else:
                     # 对于非查询操作，返回影响的行数
                     results = [{"affected_rows": cursor.rowcount}]

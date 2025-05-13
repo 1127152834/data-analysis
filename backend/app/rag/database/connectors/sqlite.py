@@ -1,40 +1,39 @@
 """
-PostgreSQL数据库连接器模块
+SQLite数据库连接器模块
 
-提供PostgreSQL数据库的连接和操作功能
+提供SQLite数据库的连接和操作功能，主要用于测试和演示
 """
 
 import time
 import logging
+import os
+import sqlite3
 from typing import Dict, List, Optional, Tuple, Any
 from contextlib import contextmanager
 
-import psycopg2
-from psycopg2.extras import DictCursor
-from sqlalchemy import create_engine, inspect, MetaData, Table, text
+from sqlalchemy import create_engine, inspect, MetaData, Table, Column, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import QueuePool
 
 from app.models.database_connection import DatabaseConnection
-from app.parameters.database_connection import PostgreSQLParameters
+from app.parameters.database_connection import SQLiteParameters
 from app.rag.database.base import BaseConnector, ConnectionTestResult
-from app.utils.crypto import decrypt_dict_values
 
 
 logger = logging.getLogger(__name__)
 
 
-class PostgreSQLConnector(BaseConnector):
+class SQLiteConnector(BaseConnector):
     """
-    PostgreSQL数据库连接器
+    SQLite数据库连接器
     
-    提供与PostgreSQL数据库交互的功能
+    提供与SQLite数据库交互的功能
     """
     
     def __init__(self, connection: DatabaseConnection):
         """
-        初始化PostgreSQL连接器
+        初始化SQLite连接器
         
         参数:
             connection: 数据库连接配置
@@ -43,7 +42,7 @@ class PostgreSQLConnector(BaseConnector):
         self.engine: Optional[Engine] = None
         self.metadata: Optional[MetaData] = None
         self.tables: Dict[str, Table] = {}
-        self.parameters: Optional[PostgreSQLParameters] = None
+        self.parameters: Optional[SQLiteParameters] = None
         
         # 初始化参数
         self._init_parameters()
@@ -52,16 +51,10 @@ class PostgreSQLConnector(BaseConnector):
         """
         初始化连接参数
         
-        从连接配置中解析和解密参数
+        从连接配置中解析参数
         """
-        # 解密配置中的敏感字段
-        config = decrypt_dict_values(
-            self.connection_config.config, 
-            PostgreSQLParameters.SENSITIVE_FIELDS
-        )
-        
         # 创建参数对象
-        self.parameters = PostgreSQLParameters.from_dict(config)
+        self.parameters = SQLiteParameters.from_dict(self.connection_config.config)
     
     def connect(self) -> bool:
         """
@@ -73,17 +66,20 @@ class PostgreSQLConnector(BaseConnector):
             bool: 连接是否成功
         """
         try:
+            # 检查数据库文件是否存在
+            db_file = self.parameters.database
+            if not os.path.isabs(db_file):
+                # 如果是相对路径，使用当前工作目录
+                db_file = os.path.join(os.getcwd(), db_file)
+            
+            # 确保目录存在
+            os.makedirs(os.path.dirname(db_file), exist_ok=True)
+            
             # 创建SQLAlchemy引擎
-            if not self.parameters:
-                self._init_parameters()
-                
             connection_str = self.parameters.get_connection_string()
             self.engine = create_engine(
                 connection_str,
-                poolclass=QueuePool,
-                pool_size=self.parameters.pool_size,
-                pool_recycle=self.parameters.pool_recycle,
-                pool_pre_ping=True  # 连接前ping确保连接有效
+                connect_args={"check_same_thread": False}
             )
             
             # 测试连接
@@ -91,10 +87,10 @@ class PostgreSQLConnector(BaseConnector):
                 conn.execute(text("SELECT 1"))
             
             # 更新连接状态
-            logger.info(f"Successfully connected to PostgreSQL database: {self.parameters.database}")
+            logger.info(f"Successfully connected to SQLite database: {self.parameters.database}")
             return True
         except Exception as e:
-            logger.error(f"Failed to connect to PostgreSQL database: {str(e)}")
+            logger.error(f"Failed to connect to SQLite database: {str(e)}")
             return False
     
     @contextmanager
@@ -142,15 +138,14 @@ class PostgreSQLConnector(BaseConnector):
                     details=None
                 )
             
-            # 获取数据库版本和信息
+            # 获取SQLite版本和信息
             with self.get_connection() as conn:
-                result = conn.execute(text("SELECT version()")).fetchone()
+                result = conn.execute(text("SELECT sqlite_version()")).fetchone()
                 version = result[0] if result else "Unknown"
                 
                 # 获取表数量
                 tables_result = conn.execute(text(
-                    f"SELECT count(*) as table_count FROM information_schema.tables "
-                    f"WHERE table_schema = 'public'"
+                    "SELECT count(*) FROM sqlite_master WHERE type='table'"
                 )).fetchone()
                 table_count = tables_result[0] if tables_result else 0
                 
@@ -159,7 +154,7 @@ class PostgreSQLConnector(BaseConnector):
             
             return ConnectionTestResult(
                 success=True,
-                message=f"Successfully connected to PostgreSQL {version}",
+                message=f"Successfully connected to SQLite {version}",
                 details={
                     "version": version,
                     "database": self.parameters.database,
@@ -198,9 +193,9 @@ class PostgreSQLConnector(BaseConnector):
             
             # 获取所有表信息
             tables_metadata = {}
-            for table_name in inspector.get_table_names(schema='public'):
+            for table_name in inspector.get_table_names():
                 columns = []
-                for column in inspector.get_columns(table_name, schema='public'):
+                for column in inspector.get_columns(table_name):
                     columns.append({
                         "name": column["name"],
                         "type": str(column["type"]),
@@ -210,12 +205,12 @@ class PostgreSQLConnector(BaseConnector):
                     })
                 
                 # 获取主键信息
-                pk = inspector.get_pk_constraint(table_name, schema='public')
+                pk = inspector.get_pk_constraint(table_name)
                 primary_keys = pk.get("constrained_columns", []) if pk else []
                 
                 # 获取外键信息
                 foreign_keys = []
-                for fk in inspector.get_foreign_keys(table_name, schema='public'):
+                for fk in inspector.get_foreign_keys(table_name):
                     foreign_keys.append({
                         "name": fk.get("name", ""),
                         "referred_table": fk.get("referred_table", ""),
@@ -229,102 +224,17 @@ class PostgreSQLConnector(BaseConnector):
                     "foreign_keys": foreign_keys
                 }
             
-            return {
+            metadata = {
                 "database": self.parameters.database,
                 "tables": tables_metadata,
                 "table_count": len(tables_metadata),
-                "schema": self.parameters.schema or "public",
                 "updated_at": time.time()
             }
+            
+            return metadata
         except Exception as e:
-            logger.error(f"Failed to get metadata: {str(e)}")
+            logger.error(f"Failed to get database metadata: {str(e)}")
             return {"error": str(e)}
-    
-    def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """
-        执行SQL查询
-        
-        执行查询并返回结果和可能的错误
-        
-        参数:
-            query: SQL查询字符串
-            params: 查询参数
-            
-        返回:
-            Tuple[List[Dict[str, Any]], Optional[str]]: 查询结果和错误信息
-        """
-        # 如果是只读模式，禁止执行非SELECT查询
-        if self.connection_config.read_only:
-            # 简单检查是否是SELECT查询（更完善的检查应使用SQL解析库）
-            query_upper = query.strip().upper()
-            if not query_upper.startswith("SELECT") and not query_upper.startswith("SHOW") and not query_upper.startswith("EXPLAIN"):
-                return [], "Write operations are not allowed in read-only mode"
-        
-        if not self.engine:
-            self.connect()
-            
-        if not self.engine:
-            return [], "Failed to connect to database"
-        
-        try:
-            # 使用psycopg2直接执行查询以获取字典格式结果
-            conn_params = {
-                "host": self.parameters.host,
-                "port": self.parameters.port,
-                "user": self.parameters.user,
-                "password": self.parameters.password,
-                "dbname": self.parameters.database
-            }
-            
-            # 添加模式设置
-            if self.parameters.schema:
-                conn_params["options"] = f"-c search_path={self.parameters.schema}"
-            
-            conn = psycopg2.connect(**conn_params)
-            conn.autocommit = False
-            
-            with conn.cursor(cursor_factory=DictCursor) as cursor:
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-                
-                if query.strip().upper().startswith("SELECT") or query.strip().upper().startswith("SHOW"):
-                    # 对于查询操作，返回结果集
-                    results = cursor.fetchall()
-                    
-                    # 将结果转换为字典列表
-                    column_names = [desc[0] for desc in cursor.description]
-                    result_dicts = []
-                    for row in results:
-                        row_dict = {}
-                        for i, value in enumerate(row):
-                            row_dict[column_names[i]] = value
-                        result_dicts.append(row_dict)
-                    
-                    results = result_dicts
-                else:
-                    # 对于非查询操作，返回影响的行数
-                    results = [{"affected_rows": cursor.rowcount}]
-                    conn.commit()
-            
-            conn.close()
-            return results, None
-        except Exception as e:
-            logger.error(f"Query execution failed: {str(e)}")
-            return [], str(e)
-    
-    def close(self) -> None:
-        """
-        关闭数据库连接
-        
-        释放数据库连接资源
-        """
-        if self.engine:
-            self.engine.dispose()
-            self.engine = None
-            self.metadata = None
-            self.tables = {}
     
     def get_tables(self) -> List[str]:
         """
@@ -341,7 +251,7 @@ class PostgreSQLConnector(BaseConnector):
             
         try:
             inspector = inspect(self.engine)
-            return inspector.get_table_names(schema=self.parameters.schema)
+            return inspector.get_table_names()
         except Exception as e:
             logger.error(f"Failed to get tables: {str(e)}")
             return []
@@ -364,7 +274,7 @@ class PostgreSQLConnector(BaseConnector):
             
         try:
             inspector = inspect(self.engine)
-            columns = inspector.get_columns(table_name, schema=self.parameters.schema)
+            columns = inspector.get_columns(table_name)
             
             # 转换为标准格式
             result = []
@@ -380,4 +290,96 @@ class PostgreSQLConnector(BaseConnector):
             return result
         except Exception as e:
             logger.error(f"Failed to get columns for table '{table_name}': {str(e)}")
-            return [] 
+            return []
+    
+    def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        执行SQL查询
+        
+        执行查询并返回结果和可能的错误
+        
+        参数:
+            query: SQL查询字符串
+            params: 查询参数，可能包含timeout(超时秒数)和max_rows(最大返回行数)
+            
+        返回:
+            Tuple[List[Dict[str, Any]], Optional[str]]: 查询结果和错误信息
+        """
+        # 提取特殊参数
+        timeout = None
+        max_rows = None
+        query_params = {}
+        
+        if params:
+            if 'timeout' in params:
+                timeout = params.pop('timeout')
+            if 'max_rows' in params:
+                max_rows = params.pop('max_rows')
+            # 剩余参数作为查询参数
+            query_params = params
+        
+        # 如果是只读模式，禁止执行非SELECT查询
+        if self.connection_config.read_only:
+            # 简单检查是否是SELECT查询（更完善的检查应使用SQL解析库）
+            query_upper = query.strip().upper()
+            if not query_upper.startswith("SELECT") and not query_upper.startswith("PRAGMA"):
+                return [], "Write operations are not allowed in read-only mode"
+        
+        if not self.engine:
+            self.connect()
+            
+        if not self.engine:
+            return [], "Failed to connect to database"
+        
+        try:
+            # 使用sqlite3直接执行查询以获取字典格式结果
+            db_file = self.parameters.database
+            if not os.path.isabs(db_file):
+                db_file = os.path.join(os.getcwd(), db_file)
+            
+            conn = sqlite3.connect(db_file, timeout=timeout if timeout else 5.0)
+            conn.row_factory = sqlite3.Row
+            
+            with conn:
+                cursor = conn.cursor()
+                if query_params:
+                    cursor.execute(query, query_params)
+                else:
+                    cursor.execute(query)
+                
+                if query.strip().upper().startswith("SELECT") or query.strip().upper().startswith("PRAGMA"):
+                    # 对于查询操作，返回结果集
+                    if max_rows:
+                        rows = cursor.fetchmany(max_rows)
+                    else:
+                        rows = cursor.fetchall()
+                    
+                    # 转换为字典列表
+                    column_names = [desc[0] for desc in cursor.description]
+                    results = []
+                    for row in rows:
+                        row_dict = {}
+                        for i, column in enumerate(column_names):
+                            row_dict[column] = row[i]
+                        results.append(row_dict)
+                else:
+                    # 对于非查询操作，返回影响的行数
+                    results = [{"affected_rows": cursor.rowcount}]
+            
+            conn.close()
+            return results, None
+        except Exception as e:
+            logger.error(f"Query execution failed: {str(e)}")
+            return [], str(e)
+    
+    def close(self) -> None:
+        """
+        关闭数据库连接
+        
+        释放数据库连接资源
+        """
+        if self.engine:
+            self.engine.dispose()
+            self.engine = None
+            self.metadata = None
+            self.tables = {} 

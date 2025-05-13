@@ -39,7 +39,7 @@ interface CreateDatabaseConnectionFormProps {
 const baseSchema = z.object({
   name: z.string().min(1, '不能为空'),
   description: z.string().min(1, '不能为空'),
-  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sql_server', 'oracle'], {
+  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle'], {
     errorMap: () => ({ message: '不能为空' })
   }),
   config: z.record(z.any()),
@@ -172,7 +172,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
       switch (value.database_type) {
         case 'mysql':
         case 'postgresql':
-        case 'sql_server':
+        case 'sqlserver':
           schema = sqlSchema;
           break;
         case 'mongodb':
@@ -211,7 +211,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
     let defaultPort = 0;
     if (type === 'mysql') defaultPort = 3306;
     else if (type === 'postgresql') defaultPort = 5432;
-    else if (type === 'sql_server') defaultPort = 1433;
+    else if (type === 'sqlserver') defaultPort = 1433;
     else if (type === 'oracle') defaultPort = 1521;
 
     form.setFieldValue('config', {
@@ -367,7 +367,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
             <Section title="连接信息">
               {databaseType ? (
                 <>
-                  {(databaseType === 'mysql' || databaseType === 'postgresql' || databaseType === 'sql_server') && (
+                  {(databaseType === 'mysql' || databaseType === 'postgresql' || databaseType === 'sqlserver') && (
                     <SubSection title="连接信息">
                       <field.Basic 
                         name="config.host" 

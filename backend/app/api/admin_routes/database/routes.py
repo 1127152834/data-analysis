@@ -177,6 +177,9 @@ def update_database_connection(
     
     更新指定ID的数据库连接信息
     """
+    # 添加请求体的日志记录
+    print(f"收到更新数据库连接请求，ID: {connection_id}, 数据: {connection_update.dict(exclude_unset=True)}")
+    
     repo = DatabaseConnectionRepo()
     connection = repo.get(session, connection_id)
     
@@ -204,6 +207,21 @@ def update_database_connection(
     
     if connection_update.read_only is not None:
         connection.read_only = connection_update.read_only
+    
+    # 处理表描述信息
+    if connection_update.table_descriptions is not None:
+        print(f"更新表描述信息: {connection_update.table_descriptions}")
+        connection.table_descriptions = connection_update.table_descriptions
+    
+    # 处理列描述信息
+    if connection_update.column_descriptions is not None:
+        print(f"更新列描述信息: {connection_update.column_descriptions}")
+        connection.column_descriptions = connection_update.column_descriptions
+    
+    # 处理可访问角色
+    if connection_update.accessible_roles is not None:
+        print(f"更新可访问角色: {connection_update.accessible_roles}")
+        connection.accessible_roles = connection_update.accessible_roles
     
     # 更新数据库类型和配置（如果提供）
     if connection_update.database_type:
@@ -243,6 +261,9 @@ def update_database_connection(
     # 如果请求测试连接，则执行连接测试
     if connection_update.test_connection:
         _test_and_update_connection(connection.id, session)
+    
+    # 打印更新后的连接信息
+    print(f"数据库连接更新成功，ID: {connection_id}")
     
     return connection
 
