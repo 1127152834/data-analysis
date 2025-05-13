@@ -372,12 +372,182 @@ class ChatFlow:
             user_question=refined_question
         )
 
-        # 步骤6: 使用优化的问题和相关文档块生成回答
-        response_text, source_documents = yield from self._generate_answer(
-            user_question=refined_question,
-            knowledge_graph_context=knowledge_graph_context,
-            relevant_chunks=relevant_chunks,
+        # 步骤6: 决定使用代理还是传统RAG流程生成回答
+        response_text = ""
+        source_documents = []
+        
+        # 检查是否应该使用数据库工具
+        should_use_db_tools = (
+            self.agent is not None and 
+            self._should_use_database_tools(refined_question, relevant_chunks)
         )
+        
+        if should_use_db_tools:
+            # 通知前端正在思考
+            yield ChatEvent(
+                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                payload=ChatStreamMessagePayload(
+                    state=ChatMessageSate.THINKING,
+                    display="分析问题，准备查询数据库...",
+                ),
+            )
+            
+            # 使用追踪管理器记录代理决策的性能
+            with self._trace_manager.span(
+                name="agent_reasoning", input=refined_question
+            ) as span:
+                try:
+                    # 构建完整的提示
+                    prompt_with_context = f"""基于以下上下文信息回答问题。如果上下文信息不足以回答，你可以使用数据库查询工具获取更多信息。
+
+                    问题: {refined_question}
+
+                    知识图谱上下文:
+                    {knowledge_graph_context}
+
+                    相关知识:
+                    """
+                    # 添加文档上下文
+                    if relevant_chunks:
+                        for i, chunk in enumerate(relevant_chunks):
+                            prompt_with_context += f"\n文档 {i+1}:\n{chunk.node.get_content()}\n"
+                            
+                    # 收集工具调用信息以展示给用户
+                    tool_calls_for_display = []
+                    
+                    # 流式输出代理的思考过程和工具调用
+                    for step in self.agent.stream_chat(prompt_with_context):
+                        # 检查是否是思考过程
+                        if hasattr(step, "thinking") and step.thinking:
+                            # 将思考过程作为注释发送
+                            yield ChatEvent(
+                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                                payload=ChatStreamMessagePayload(
+                                    state=ChatMessageSate.TOOL_CALLING,
+                                    display=f"思考: {step.thinking}",
+                                ),
+                            )
+                        
+                        # 检查是否是工具调用
+                        if hasattr(step, "tool_call") and step.tool_call:
+                            tool_name = step.tool_call.tool_name
+                            tool_input = step.tool_call.tool_input
+                            
+                            # 提取查询文本，用于前端展示
+                            if isinstance(tool_input, dict) and 'natural_language_query' in tool_input:
+                                query_text = tool_input['natural_language_query']
+                            else:
+                                query_text = str(tool_input)
+                                
+                            # 为前端准备工具调用信息
+                            tool_call_display = {
+                                "tool": tool_name.replace("query_", "").replace("_", " "),
+                                "query": query_text,
+                                "status": "执行中..."
+                            }
+                            tool_calls_for_display.append(tool_call_display)
+                            
+                            # 通知前端正在执行工具调用
+                            yield ChatEvent(
+                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                                payload=ChatStreamMessagePayload(
+                                    state=ChatMessageSate.TOOL_CALLING,
+                                    display=f"正在查询数据库: {tool_name}",
+                                    context=tool_calls_for_display,
+                                ),
+                            )
+                        
+                        # 检查是否是工具输出
+                        if hasattr(step, "tool_output") and step.tool_output:
+                            tool_output = step.tool_output
+                            
+                            if isinstance(tool_output, ToolOutput):
+                                # 提取工具名称和输出内容
+                                output_str = str(tool_output.content)
+                                tool_name = tool_output.tool_name if hasattr(tool_output, 'tool_name') else "未知工具"
+                                
+                                # 尝试从输出中提取SQL
+                                sql_query = "未提供SQL"
+                                if "生成的SQL:" in output_str:
+                                    sql_parts = output_str.split("生成的SQL:", 1)
+                                    if len(sql_parts) > 1:
+                                        sql_query = sql_parts[1].split("\n\n", 1)[0].strip()
+                                
+                                # 更新工具调用展示信息
+                                for call_display in tool_calls_for_display:
+                                    if call_display["tool"] == tool_name.replace("query_", "").replace("_", " "):
+                                        call_display["status"] = "已完成"
+                                        call_display["sql"] = sql_query
+                                
+                                # 创建源文档对象，用于展示查询结果
+                                source_doc = SourceDocument(
+                                    id=f"db_tool_{tool_name}",
+                                    title=f"数据库查询: {tool_name}",
+                                    text=f"查询: {query_text}\nSQL: {sql_query}\n结果: {output_str}",
+                                    metadata={
+                                        "tool_name": tool_name,
+                                        "query": query_text,
+                                        "sql": sql_query
+                                    }
+                                )
+                                source_documents.append(source_doc)
+                                
+                                # 通知前端更新工具调用状态
+                                yield ChatEvent(
+                                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                                    payload=ChatStreamMessagePayload(
+                                        state=ChatMessageSate.TOOL_CALLING,
+                                        display=f"数据库查询结果",
+                                        context=tool_calls_for_display,
+                                    ),
+                                )
+                        
+                        # 检查是否是响应片段
+                        if hasattr(step, "response") and step.response and hasattr(step, "delta") and step.delta:
+                            response_text += step.delta
+                            yield ChatEvent(
+                                event_type=ChatEventType.TEXT_PART,
+                                payload=step.delta,
+                            )
+                    
+                    # 如果回答为空，抛出异常
+                    if not response_text:
+                        raise Exception("代理未能生成有效响应")
+                    
+                    # 记录追踪结果
+                    span.end(
+                        output=response_text,
+                        metadata={
+                            "source_documents": source_documents,
+                            "used_database_tools": True,
+                            "tool_calls": tool_calls_for_display
+                        }
+                    )
+                    
+                except Exception as e:
+                    # 记录异常日志
+                    logger.exception(f"代理处理过程中出错: {e}")
+                    
+                    # 通知前端发生错误
+                    yield ChatEvent(
+                        event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                        payload=ChatStreamMessagePayload(
+                            state=ChatMessageSate.ERROR,
+                            display="数据库查询过程中出错，尝试使用知识库回答"
+                        ),
+                    )
+                    
+                    # 回退到传统RAG流程
+                    response_text, source_documents = yield from self._fallback_to_rag(
+                        refined_question, knowledge_graph_context
+                    )
+        else:
+            # 如果不需要使用数据库工具，使用传统RAG流程
+            response_text, source_documents = yield from self._generate_answer(
+                user_question=refined_question,
+                knowledge_graph_context=knowledge_graph_context,
+                relevant_chunks=relevant_chunks,
+            )
 
         # 步骤7: 完成聊天，保存回答和相关信息
         yield from self._chat_finish(
@@ -671,7 +841,10 @@ class ChatFlow:
         relevant_chunks: List[NodeWithScore],
     ) -> Generator[ChatEvent, None, Tuple[str, List[SourceDocument]]]:
         """
-        根据用户问题、知识图谱上下文和相关文档块生成回答
+        使用传统RAG流程根据用户问题、知识图谱上下文和相关文档块生成回答
+        
+        注意：此方法仅处理传统RAG流程，不处理数据库工具调用逻辑
+        数据库工具调用已移至_builtin_chat方法中处理
         
         参数:
             user_question: 用户问题（可能是已重写的）
@@ -685,122 +858,6 @@ class ChatFlow:
         with self._trace_manager.span(
             name="generate_answer", input=user_question
         ) as span:
-            # 首先检查是否需要调用数据库工具
-            if self.agent and self._should_use_database_tools(user_question, relevant_chunks):
-                # 发送工具调用通知
-                yield ChatEvent(
-                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                    payload=ChatStreamMessagePayload(
-                        state=ChatMessageSate.GENERATE_ANSWER,
-                        display="分析问题以确定是否需要查询数据库",
-                    ),
-                )
-                
-                # 使用追踪管理器记录工具调用的性能
-                with self._trace_manager.span(
-                    name="database_tools_calling", input=user_question
-                ) as tool_span:
-                    # 调用代理执行数据库查询
-                    response_text = ""
-                    tool_outputs = []
-                    
-                    # 构建完整的提示
-                    prompt_with_context = f"""基于以下上下文信息回答问题。如果上下文信息不足以回答，你可以使用数据库查询工具获取更多信息。
-
-                        问题: {user_question}
-
-                        知识图谱上下文:
-                        {knowledge_graph_context}
-
-                        相关知识:
-                        """
-                    # 添加文档上下文
-                    if relevant_chunks:
-                        for i, chunk in enumerate(relevant_chunks):
-                            prompt_with_context += f"\n文档 {i+1}:\n{chunk.node.get_content()}\n"
-                    
-                    # 流式输出代理的思考过程和工具调用
-                    for step in self.agent.stream_chat(prompt_with_context):
-                        # 检查是否是思考过程
-                        if hasattr(step, "thinking") and step.thinking:
-                            # 将思考过程作为注释发送
-                            yield ChatEvent(
-                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                                payload=ChatStreamMessagePayload(
-                                    state=ChatMessageSate.TOOL_CALLING,
-                                    display=f"思考: {step.thinking}",
-                                ),
-                            )
-                        
-                        # 检查是否是工具调用
-                        if hasattr(step, "tool_call") and step.tool_call:
-                            tool_name = step.tool_call.tool_name
-                            tool_input = step.tool_call.tool_input
-                            yield ChatEvent(
-                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                                payload=ChatStreamMessagePayload(
-                                    state=ChatMessageSate.TOOL_CALLING,
-                                    display=f"正在查询数据库: {tool_name}",
-                                    context=tool_input,
-                                ),
-                            )
-                        
-                        # 检查是否是工具输出
-                        if hasattr(step, "tool_output") and step.tool_output:
-                            tool_output = step.tool_output
-                            if isinstance(tool_output, ToolOutput):
-                                tool_outputs.append(tool_output)
-                                yield ChatEvent(
-                                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                                    payload=ChatStreamMessagePayload(
-                                        state=ChatMessageSate.TOOL_CALLING,
-                                        display=f"数据库查询结果",
-                                        context=tool_output.content,
-                                    ),
-                                )
-                        
-                        # 检查是否是响应片段
-                        if hasattr(step, "response") and step.response and step.delta:
-                            response_text += step.delta
-                            yield ChatEvent(
-                                event_type=ChatEventType.TEXT_PART,
-                                payload=step.delta,
-                            )
-                    
-                    # 记录工具调用结果
-                    tool_span.end(
-                        output={
-                            "response_text": response_text,
-                            "tool_outputs": [str(t) for t in tool_outputs],
-                        }
-                    )
-                    
-                    # 返回生成的回答和源文档
-                    source_documents = self.retrieve_flow.get_source_documents_from_nodes(
-                        relevant_chunks
-                    )
-                    
-                    # 发送源文档信息
-                    yield ChatEvent(
-                        event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                        payload=ChatStreamMessagePayload(
-                            state=ChatMessageSate.SOURCE_NODES,
-                            context=source_documents,
-                        ),
-                    )
-                    
-                    # 记录追踪结果
-                    span.end(
-                        output=response_text,
-                        metadata={
-                            "source_documents": source_documents,
-                            "used_database_tools": True,
-                        },
-                    )
-                    
-                    return response_text, source_documents
-            
-            # 如果不需要使用数据库工具，使用标准的RAG流程
             # 初始化响应合成器
             text_qa_template = RichPromptTemplate(
                 template_str=self.engine_config.llm.text_qa_prompt
@@ -869,7 +926,7 @@ class ChatFlow:
 
             # 返回回答文本和源文档
             return response_text, source_documents
-            
+
     def _should_use_database_tools(self, user_question: str, relevant_chunks: List[NodeWithScore]) -> bool:
         """
         判断是否应该使用数据库工具回答问题
@@ -1295,3 +1352,39 @@ class ChatFlow:
 
         # 返回目标和响应格式
         return goal, response_format
+
+    def _fallback_to_rag(
+        self, 
+        user_question: str, 
+        knowledge_graph_context: str
+    ) -> Generator[ChatEvent, None, Tuple[str, List[SourceDocument]]]:
+        """
+        当代理处理失败时回退到传统RAG流程
+        
+        参数:
+            user_question: 用户问题
+            knowledge_graph_context: 知识图谱上下文
+            
+        返回:
+            生成器，最终产生回答文本和源文档列表的元组
+        """
+        # 发送回退通知
+        yield ChatEvent(
+            event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+            payload=ChatStreamMessagePayload(
+                state=ChatMessageSate.INFO,
+                display="回退到知识库检索以获取答案",
+            ),
+        )
+        
+        # 搜索相关文档块
+        relevant_chunks = yield from self._search_relevance_chunks(user_question)
+        
+        # 使用标准RAG流程生成回答
+        response_text, source_documents = yield from self._generate_answer(
+            user_question=user_question,
+            knowledge_graph_context=knowledge_graph_context,
+            relevant_chunks=relevant_chunks,
+        )
+        
+        return response_text, source_documents
