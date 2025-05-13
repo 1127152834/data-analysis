@@ -11,7 +11,7 @@ import { use } from "react";
 import { useKnowledgeBase } from '@/components/knowledge-base/hooks';
 import useSWR from 'swr';
 
-export default function DocumentChunksPage(props: { params: Promise<{ id: string, documentId: string }> }) {
+export default async function DocumentChunksPage(props: { params: Promise<{ id: string, documentId: string }> }) {
   const params = use(props.params);
   const kbId = parseInt(decodeURIComponent(params.id));
   const documentId = parseInt(decodeURIComponent(params.documentId));

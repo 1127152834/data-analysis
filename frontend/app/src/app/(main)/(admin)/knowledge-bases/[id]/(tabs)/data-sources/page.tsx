@@ -8,7 +8,7 @@ import { useAllKnowledgeBaseDataSources } from '@/components/knowledge-base/hook
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileDownIcon, GlobeIcon, PaperclipIcon } from 'lucide-react';
 
-export default function KnowledgeBaseDataSourcesPage(props: { params: Promise<{ id: string }> }) {
+export default async function KnowledgeBaseDataSourcesPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const id = parseInt(decodeURIComponent(params.id));
   const { data: dataSources, isLoading } = useAllKnowledgeBaseDataSources(id);

@@ -9,7 +9,7 @@ import { DateFormat } from '@/components/date-format';
 import { ArrowLeftIcon, ChevronRightIcon, FileTextIcon, HomeIcon, LoaderIcon } from 'lucide-react';
 import { getDocument } from '@/api/documents';
 
-export default function DocumentViewPage({ params }: { params: { id: string } }) {
+export default async function DocumentViewPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const documentId = parseInt(params.id);
   const [document, setDocument] = useState<any>(null);
