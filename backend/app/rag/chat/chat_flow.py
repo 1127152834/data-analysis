@@ -532,7 +532,7 @@ class ChatFlow:
                 logger.debug("使用数据库查询优化的问题改写模板")
             elif refined_question_prompt:
                 # 使用传入的模板
-            prompt_template = RichPromptTemplate(refined_question_prompt)
+                prompt_template = RichPromptTemplate(refined_question_prompt)
             else:
                 # 使用默认模板
                 prompt_template = RichPromptTemplate(self.engine_config.llm.condense_question_prompt)
@@ -889,14 +889,14 @@ class ChatFlow:
 
             # 如果有数据库查询结果，显示数据库查询提示
                         if db_nodes and len(db_nodes) > 0:
-                yield ChatEvent(
-                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                    payload=ChatStreamMessagePayload(
-                        state=ChatMessageSate.DATABASE_QUERY,
-                        display="执行数据库查询",
-                                    context={"db_results_count": len(db_nodes)},
-                                ),
-                            )
+                            yield ChatEvent(
+                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                                payload=ChatStreamMessagePayload(
+                                    state=ChatMessageSate.DATABASE_QUERY,
+                                    display="执行数据库查询",
+                                                context={"db_results_count": len(db_nodes)},
+                                            ),
+                                        )
                 except Exception as e:
                     logger.error(f"数据库查询失败: {str(e)}")
                     db_nodes = []
