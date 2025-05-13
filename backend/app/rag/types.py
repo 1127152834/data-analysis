@@ -47,4 +47,6 @@ class ChatMessageSate(int, enum.Enum):
     DATABASE_QUERY = 5
     GENERATE_ANSWER = 6
     TOOL_CALLING = 7
+    THINKING = 8
+    ERROR = 10
     FINISHED = 9
