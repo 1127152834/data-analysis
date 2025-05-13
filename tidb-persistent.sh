@@ -48,19 +48,44 @@ fi
 echo -e "${YELLOW}停止当前运行的playground实例...${NC}"
 tiup playground stop
 
-# 使用tag启动新的playground，并复用之前的数据目录（如果存在）
+# 使用tag启动新的playground，使用nohup确保后台运行
 echo -e "${YELLOW}启动持久化TiDB集群...${NC}"
-tiup playground --db 1 --pd 1 --kv 1 --tiflash 1 --tag $TIDB_TAG
+nohup tiup playground --db 1 --pd 1 --kv 1 --tiflash 1 --tag $TIDB_TAG > $HOME/tidb-playground.log 2>&1 &
+TIDB_PID=$!
 
 echo -e "${GREEN}===============================================${NC}"
-echo -e "${GREEN}TiDB集群已启动！${NC}"
+echo -e "${GREEN}TiDB集群已在后台启动！(PID: $TIDB_PID)${NC}"
+echo -e "${GREEN}日志文件: $HOME/tidb-playground.log${NC}"
 echo -e "${GREEN}TiDB访问地址: $TIDB_HOST:$TIDB_PORT${NC}"
 echo -e "${GREEN}TiDB Dashboard: http://127.0.0.1:2379/dashboard${NC}"
 echo -e "${GREEN}===============================================${NC}"
 
 # 等待TiDB和TiFlash完全启动
-echo -e "${YELLOW}等待TiDB和TiFlash完全启动...${NC}"
-sleep 15
+echo -e "${YELLOW}等待TiDB和TiFlash完全启动 (约30秒)...${NC}"
+sleep 5
+
+# 确认TiDB是否成功启动
+echo -e "${YELLOW}检查TiDB是否成功启动...${NC}"
+MAX_RETRY=60
+for ((i=1; i<=MAX_RETRY; i++)); do
+  if nc -z $TIDB_HOST $TIDB_PORT 2>/dev/null; then
+    echo -e "${GREEN}TiDB已成功启动，端口$TIDB_PORT可以访问！${NC}"
+    TIDB_STARTED=true
+    break
+  fi
+  
+  echo -ne "${YELLOW}等待TiDB启动中 ($i/$MAX_RETRY)...\r${NC}"
+  sleep 1
+done
+
+if [ -z "$TIDB_STARTED" ]; then
+  echo -e "${RED}TiDB启动超时，请检查日志: $HOME/tidb-playground.log${NC}"
+  echo -e "${RED}手动检查: tiup playground display${NC}"
+  tail -n 20 $HOME/tidb-playground.log
+  exit 1
+fi
+
+sleep 10  # 额外等待10秒确保其他组件启动
 
 # 创建自动设置TiFlash副本的Python脚本
 echo -e "${YELLOW}创建TiFlash副本设置脚本...${NC}"

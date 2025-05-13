@@ -237,9 +237,6 @@ class LinkedDatabaseConfig(BaseModel):
     # 允许访问此数据库的用户角色列表
     allowed_user_roles: List[str] = Field(default_factory=list)
     
-    # 访问此数据库需要的最低权限级别
-    access_level_required: UserAccessLevel = UserAccessLevel.READ_ONLY
-    
     # 是否启用敏感查询保护（对潜在危险操作进行额外验证）
     sensitive_queries_protection: bool = True
     
