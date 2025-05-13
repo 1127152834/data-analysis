@@ -3,7 +3,10 @@ FROM node:20-alpine AS base
 # 1. Install dependencies only when needed
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
+
+# 添加国内Alpine镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
+    && apk add --no-cache libc6-compat
 
 WORKDIR /tidb.ai
 
@@ -28,7 +31,10 @@ RUN pnpm i --frozen-lockfile
 # 2. Rebuild the source code only when needed
 FROM base AS builder
 # Need git client to fetch git revision info
-RUN apk add --no-cache git
+# 同样使用国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
+    && apk add --no-cache git
+
 WORKDIR /tidb.ai
 COPY --from=deps /tidb.ai/frontend/node_modules ./frontend/node_modules
 COPY --from=deps /tidb.ai/frontend/app/node_modules ./frontend/app/node_modules

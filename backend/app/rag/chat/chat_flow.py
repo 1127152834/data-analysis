@@ -931,6 +931,10 @@ class ChatFlow:
         """
         判断是否应该使用数据库工具回答问题
         
+        有两种工作模式：
+        1. 自主模式(autonomous)：直接返回True，让大模型自行决定是否使用数据库工具
+        2. 引导模式(guided)：通过关键词匹配和文档相关性分析决定是否使用数据库工具
+        
         参数:
             user_question: 用户问题
             relevant_chunks: 相关文档块
