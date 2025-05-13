@@ -90,6 +90,10 @@ dev = [
 [tool.ruff.lint]
 ignore = ["E711", "E712", "F811",  "F841"]
 
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
 # Test
 
 [tool.pytest.ini_options]
