@@ -4,8 +4,6 @@ from typing import List, Dict, Any, Optional
 from llama_index.core import KnowledgeGraphIndex, QueryBundle
 from llama_index.core.indices.query.base import BaseQueryEngine
 from llama_index.core.retrievers import KGTableRetriever
-from llama_index.core.response.schema import NodeWithScore
-from llama_index.core.schema import QueryType, QueryMode
 
 logger = logging.getLogger(__name__)
 

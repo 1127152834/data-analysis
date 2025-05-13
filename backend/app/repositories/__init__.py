@@ -10,10 +10,6 @@ from .feedback import feedback_repo
 from .llm import llm_repo
 from .embedding_model import embedding_model_repo
 from .chat_meta import ChatMetaRepo
-from .database_connection import DatabaseConnectionRepo
 
 # 添加新的聊天元数据仓库实例
 chat_meta_repo = ChatMetaRepo()
-
-# 添加数据库连接仓库实例
-database_connection_repo = DatabaseConnectionRepo()
