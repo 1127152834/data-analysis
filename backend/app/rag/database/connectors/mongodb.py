@@ -398,7 +398,7 @@ class MongoDBConnector(BaseConnector):
         if self.client:
             self.client.close()
             self.client = None
-            self.db = None
+            self.db = None 
     
     def get_tables(self) -> List[str]:
         """

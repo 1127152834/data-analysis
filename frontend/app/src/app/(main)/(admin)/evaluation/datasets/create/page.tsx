@@ -14,9 +14,9 @@ export default function EvaluationTaskPage () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Evaluation', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
-          { title: 'Datasets', url: '/evaluation/datasets' },
-          { title: 'Create' },
+          { title: '评估', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
+          { title: '数据集', url: '/evaluation/datasets' },
+          { title: '创建' },
         ]}
       />
       <CreateEvaluationDatasetForm

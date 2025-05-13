@@ -207,11 +207,11 @@ export async function updateDatabaseConnection(id: number, payload: DatabaseConn
   
   try {
     const response = await fetch(requestUrl(`/api/v1/admin/database/connections/${id}`), {
-      method: 'PUT',
-      headers: {
-        ...await authenticationHeaders(),
-        'Content-Type': 'application/json',
-      },
+    method: 'PUT',
+    headers: {
+      ...await authenticationHeaders(),
+      'Content-Type': 'application/json',
+    },
       body: JSON.stringify({ connection_update: finalPayload }),
     });
     

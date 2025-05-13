@@ -299,6 +299,11 @@ class DatabaseOption(BaseModel):
     # mixed: 同时使用数据库查询和知识库检索，并合并结果
     query_mode: str = "auto"
     
+    # 工具调用模式
+    # guided: 系统先判断是否需要使用数据库工具，再决定是否调用代理
+    # autonomous: 完全自主模式，直接将所有工具提供给模型，让它自行决定是否使用
+    tool_mode: str = "guided"
+    
     # 权限设置
     # 允许的SQL操作类型（例如：["SELECT"]或["SELECT", "INSERT", "UPDATE"]）
     allowed_operations: List[str] = Field(default_factory=lambda: ["SELECT"])
@@ -454,6 +459,9 @@ class ChatEngineConfig(BaseModel):
     
     # 数据库中的重排序模型实例（内部使用）
     _db_reranker: Optional[DBRerankerModel] = None
+    
+    # 活跃的数据库连接列表，用于function calling
+    active_database_connections: List[Any] = Field(default_factory=list)
 
     @property
     def is_external_engine(self) -> bool:
@@ -604,6 +612,18 @@ class ChatEngineConfig(BaseModel):
         obj._db_llm = db_chat_engine.llm
         obj._db_fast_llm = db_chat_engine.fast_llm
         obj._db_reranker = db_chat_engine.reranker
+        
+        # 读取engine_options中的数据库连接ID列表
+        db_conn_ids = db_chat_engine.engine_options.get("database_connection_ids", [])
+        
+        # 加载数据库连接对象
+        from app.repositories import database_connection_repo
+        obj.active_database_connections = []
+        for db_id in db_conn_ids:
+            db_conn = database_connection_repo.get(session, db_id)
+            if db_conn and not db_conn.deleted_at:
+                obj.active_database_connections.append(db_conn)
+        
         return obj
 
     def get_llama_llm(self, session: Session) -> LLM:
@@ -799,3 +819,13 @@ class ChatEngineConfig(BaseModel):
                 "post_verification_token": True,
             }
         )
+
+# 在文件末尾添加
+# 导入DatabaseConnection并重新构建模型
+from app.models.database_connection import DatabaseConnection
+
+# 现在重定义active_database_connections的类型
+ChatEngineConfig.model_fields["active_database_connections"].annotation = List[DatabaseConnection]
+
+# 重新构建模型
+ChatEngineConfig.model_rebuild()

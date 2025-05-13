@@ -19,15 +19,15 @@ export default function EvaluationDatasetPage (props: { params: Promise<{ id: st
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Evaluation', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
-          { title: 'Datasets', url: '/evaluation/datasets' },
+          { title: '评估', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
+          { title: '数据集', url: '/evaluation/datasets' },
           { title: evaluationDataset?.name ?? <Loader2Icon className="size-4 animate-spin repeat-infinite" /> },
         ]}
       />
       <EvaluationDatasetInfo evaluationDatasetId={evaluationDatasetId} />
       <Separator className="space-y-6" />
       <NextLink href={`/evaluation/datasets/${evaluationDatasetId}/items/new`} disabled={isLoading}>
-        New Item
+        新建项目
       </NextLink>
       <EvaluationDatasetItemsTable evaluationDatasetId={evaluationDatasetId} />
     </>

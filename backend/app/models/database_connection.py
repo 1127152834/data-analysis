@@ -35,6 +35,7 @@ class DatabaseType(str, Enum):
     SQLSERVER = "sqlserver"
     ORACLE = "oracle"
     SQLITE = "sqlite"
+    UNKNOWN = "unknown"  # 未知或不支持的数据库类型
 
 
 class ConnectionStatus(str, Enum):

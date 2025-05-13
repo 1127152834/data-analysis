@@ -12,11 +12,11 @@ RUN mkdir -p frontend/app
 RUN mkdir -p frontend/packages/widget-react
 
 # Install dependencies based on the preferred package manager
-COPY frontend/package.json ./frontend
-COPY frontend/pnpm-*.yaml ./frontend
-COPY frontend/patches/* ./frontend/patches
-COPY frontend/app/package.json ./frontend/app
-COPY frontend/packages/widget-react/package.json ./frontend/packages/widget-react
+COPY ./frontend/package.json ./frontend/
+COPY ./frontend/pnpm-*.yaml ./frontend/
+COPY ./frontend/patches/ ./frontend/patches/
+COPY ./frontend/app/package.json ./frontend/app/
+COPY ./frontend/packages/widget-react/package.json ./frontend/packages/widget-react/
 
 WORKDIR /tidb.ai/frontend
 
@@ -34,7 +34,7 @@ COPY --from=deps /tidb.ai/frontend/node_modules ./frontend/node_modules
 COPY --from=deps /tidb.ai/frontend/app/node_modules ./frontend/app/node_modules
 COPY --from=deps /tidb.ai/frontend/packages/widget-react/node_modules ./frontend/packages/widget-react/node_modules
 # For symbol link of root README.md
-COPY . .
+COPY ./frontend ./frontend
 
 # This will do the trick, use the corresponding env file for each environment.
 #COPY .env.production.sample .env.production

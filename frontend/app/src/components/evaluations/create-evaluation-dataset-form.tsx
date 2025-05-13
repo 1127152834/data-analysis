@@ -39,10 +39,10 @@ export function CreateEvaluationDatasetForm ({ transitioning, onCreated }: Omit<
       transitioning={transitioning}
       onCreated={onCreated}
     >
-      <field.Basic name="name" label="Name" required>
+      <field.Basic name="name" label="名称" required>
         <FormInput />
       </field.Basic>
-      <field.Basic name="upload_file" label="Upload File" description={<>Evaluation dataset CSV file. See the <Link className='underline' href='https://autoflow.tidb.ai/evaluation#prerequisites'>documentation</Link> for the format.</>}>
+      <field.Basic name="upload_file" label="上传文件" description={<>评估数据集CSV文件。查看<Link className='underline' href='https://autoflow.tidb.ai/evaluation#prerequisites'>文档</Link>了解格式要求。</>}>
         <FileInput accept={['.csv']} />
       </field.Basic>
     </FormImpl>

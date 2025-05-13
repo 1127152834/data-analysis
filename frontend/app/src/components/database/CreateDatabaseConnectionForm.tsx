@@ -244,7 +244,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
         
         try {
           // 准备测试连接的配置
-          const testResult = await handleTestConnection();
+          const testResult = await handleTestConnection(false);
           
           // 如果测试失败，中止创建过程
           if (!testResult.success) {
@@ -252,8 +252,10 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
             throw new Error(`连接测试失败: ${testResult.message}`);
           }
           
-          // 测试成功，更新测试提示
-          toast.success('连接测试成功', { id: testToastId });
+          // 测试成功后不显示成功提示，而是显示"正在创建连接"
+          // 在Sonner中，我们需要先dismiss原来的toast，然后创建新的
+          toast.dismiss(testToastId);
+          toast.loading('正在创建连接...');
           
           // 将test_connection参数设置为true
           value.test_connection = true;
@@ -329,7 +331,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
     form.setFieldValue('test_connection', testBeforeCreate);
   }, [testBeforeCreate, form]);
 
-  const handleTestConnection = async (): Promise<ConnectionTestResponse> => {
+  const handleTestConnection = async (showSuccessToast = true): Promise<ConnectionTestResponse> => {
     if (!databaseType) {
       toast.error('请先选择数据库类型');
       return {
@@ -371,7 +373,10 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
       setTestConnectionResult(result);
       
       if (result.success) {
-        toast.success('连接测试成功');
+        // 只在需要显示成功提示时显示
+        if (showSuccessToast) {
+          toast.success('连接测试成功');
+        }
       } else {
         toast.error(`连接测试失败: ${result.message}`);
       }
@@ -414,7 +419,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
               {databaseType && (
                 <div className="mt-4">
                   <TestConnectionButton 
-                    onTest={handleTestConnection} 
+                    onTest={() => handleTestConnection(true)} 
                     disabled={isTestingConnection}
                     hideResult={false}
                   />

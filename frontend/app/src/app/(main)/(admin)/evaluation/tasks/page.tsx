@@ -7,11 +7,11 @@ export default function EvaluationTasksPage () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Evaluation', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
-          { title: 'Tasks' },
+          { title: '评估', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
+          { title: '任务' },
         ]}
       />
-      <NextLink href="/evaluation/tasks/create">New Evaluation Task</NextLink>
+      <NextLink href="/evaluation/tasks/create">新建评估任务</NextLink>
       <EvaluationTasksTable />
     </>
   );

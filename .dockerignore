@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+.git
+.github
+**/.next/cache
+**/.env.local
+**/.env.development.local
+**/dist
+**/.DS_Store
+**/.dockerignore
+**/README.md
+**/.git*
+**/.vscode
+**/.idea
+# 保留所有package.json文件
+# !**/package.json 

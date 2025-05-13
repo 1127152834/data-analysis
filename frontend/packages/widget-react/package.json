@@ -1,0 +1,40 @@
+{
+  "name": "@tidb.ai/react",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp dist/widget.js ../../app/public/",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@tailwindcss/typography": "^0.5.13",
+    "@thedutchcoder/postcss-rem-to-px": "^0.0.2",
+    "@types/gtag.js": "^0.0.20",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitejs/plugin-react-swc": "^3.7.2",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^9.16.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "lucide-react": "^0.400.0",
+    "postcss": "^8",
+    "rollup-plugin-visualizer": "^5.12.0",
+    "sass": "^1.77.6",
+    "tailwindcss": "^3.4.15",
+    "tailwindcss-animate": "^1.0.7",
+    "tailwindcss-scoped-preflight": "^3.3.0",
+    "typescript": "^5.5.3",
+    "vite": "^6.0.3",
+    "vite-plugin-css-injected-by-js": "^3.5.1"
+  }
+}

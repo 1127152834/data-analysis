@@ -7,11 +7,11 @@ export default function EvaluationDatasetsPage () {
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Evaluation', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
-          { title: 'Datasets' },
+          { title: '评估', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
+          { title: '数据集' },
         ]}
       />
-      <NextLink href="/evaluation/datasets/create">New Evaluation Dataset</NextLink>
+      <NextLink href="/evaluation/datasets/create">新建评估数据集</NextLink>
       <EvaluationDatasetsTable />
     </>
   );

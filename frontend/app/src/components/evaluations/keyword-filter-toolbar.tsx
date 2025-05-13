@@ -6,7 +6,7 @@ import { useDataTable } from '@/components/use-data-table';
 import { useForm } from '@tanstack/react-form';
 import { z } from 'zod';
 
-export function KeywordFilterToolbar ({ onFilterChange }: { onFilterChange: (filters: KeywordFilter) => void }) {
+export function KeywordFilterToolbar ({ onFilterChange, placeholder = "搜索评估数据集..." }: { onFilterChange: (filters: KeywordFilter) => void, placeholder?: string }) {
   const { loading } = useDataTable();
 
   const form = useForm({
@@ -34,7 +34,7 @@ export function KeywordFilterToolbar ({ onFilterChange }: { onFilterChange: (fil
             <FormControl>
               <Input
                 className="flex-1"
-                placeholder="Search Evaluation Datasets..."
+                placeholder={placeholder}
                 name={field.name}
                 onBlur={field.handleBlur}
                 onChange={ev => field.handleChange(ev.target.value)}
@@ -44,7 +44,7 @@ export function KeywordFilterToolbar ({ onFilterChange }: { onFilterChange: (fil
           )}
         />
         <Button variant="secondary" disabled={loading} type="submit">
-          Search
+          搜索
         </Button>
       </form>
     </Form>

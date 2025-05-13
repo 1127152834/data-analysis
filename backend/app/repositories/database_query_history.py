@@ -97,7 +97,8 @@ class DatabaseQueryHistoryRepo(BaseRepo):
         session: Session, 
         chat_id: UUID, 
         hours: int = 24,
-        limit: int = 5
+        limit: int = 5,
+        since: Optional[datetime] = None
     ) -> List[DatabaseQueryHistory]:
         """
         获取对话中最近的查询记录
@@ -107,11 +108,12 @@ class DatabaseQueryHistoryRepo(BaseRepo):
             chat_id: 对话ID
             hours: 查询时间范围（小时）
             limit: 返回结果数量限制
+            since: 指定开始时间（可选，如果提供则优先于hours参数）
             
         Returns:
             List[DatabaseQueryHistory]: 查询历史列表
         """
-        time_threshold = datetime.now() - timedelta(hours=hours)
+        time_threshold = since if since else datetime.now() - timedelta(hours=hours)
         return session.exec(
             select(DatabaseQueryHistory)
             .where(
@@ -198,10 +200,7 @@ class DatabaseQueryHistoryRepo(BaseRepo):
             Dict[str, Any]: 统计信息
         """
         # 查询总次数
-        total_queries = session.exec(
-            select(DatabaseQueryHistory)
-            .where(DatabaseQueryHistory.chat_id == chat_id)
-        ).count()
+        total_queries = self.count_queries_by_chat(session, chat_id)
         
         # 成功查询次数
         successful_queries = session.exec(
@@ -230,6 +229,27 @@ class DatabaseQueryHistoryRepo(BaseRepo):
             "success_rate": (successful_queries / total_queries) if total_queries > 0 else 0,
             "databases_used": databases_used
         }
+    
+    def count_queries_by_chat(
+        self,
+        session: Session,
+        chat_id: UUID
+    ) -> int:
+        """
+        计算指定对话中的查询总数
+        
+        Args:
+            session: 数据库会话
+            chat_id: 对话ID
+            
+        Returns:
+            int: 查询总数
+        """
+        result = session.exec(
+            select(DatabaseQueryHistory)
+            .where(DatabaseQueryHistory.chat_id == chat_id)
+        )
+        return len(result.all())
     
     def update_user_feedback(
         self, 

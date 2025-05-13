@@ -17,8 +17,8 @@ export default function EvaluationTaskPage (props: { params: Promise<{ id: strin
     <>
       <AdminPageHeading
         breadcrumbs={[
-          { title: 'Evaluation', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
-          { title: 'Tasks', url: '/evaluation/tasks' },
+          { title: '评估', docsUrl: 'https://autoflow.tidb.ai/evaluation' },
+          { title: '任务', url: '/evaluation/tasks' },
           { title: evaluationTask?.name ?? <Loader2Icon className="size-4 animate-spin repeat-infinite" /> },
         ]}
       />

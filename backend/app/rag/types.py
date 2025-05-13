@@ -46,4 +46,5 @@ class ChatMessageSate(int, enum.Enum):
     SEARCH_RELATED_DOCUMENTS = 4
     DATABASE_QUERY = 5
     GENERATE_ANSWER = 6
+    TOOL_CALLING = 7
     FINISHED = 9

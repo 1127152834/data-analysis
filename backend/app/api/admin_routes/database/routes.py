@@ -122,32 +122,6 @@ def create_database_connection(
         params_class.SENSITIVE_FIELDS
     )
     
-    # 创建新连接（从数据库获取用户ID的实际值）
-    # 获取用户ID，确保它是一个有效的UUID值而不是SQLAlchemy的InstrumentedAttribute
-    user_id = str(user.id) if hasattr(user.id, '__str__') else user.id
-    user_from_db = session.get(User, user_id)
-    if not user_from_db:
-        # 如果找不到用户，可能需要先从UUID对象获取正确格式的ID
-        try:
-            if hasattr(user.id, 'hex'):
-                user_id = user.id.hex
-            user_from_db = session.get(User, user_id)
-        except Exception as e:
-            print(f"尝试获取用户时出错: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"无法获取用户信息: {str(e)}"
-            )
-    
-    if not user_from_db:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="无法获取用户信息"
-        )
-    
-    # 添加调试日志
-    print(f"DEBUG: user_from_db.id类型: {type(user_from_db.id)}, 值: {user_from_db.id}")
-    
     # 创建新连接
     new_connection = DatabaseConnection(
         name=connection_create.name,
@@ -155,7 +129,7 @@ def create_database_connection(
         database_type=connection_create.database_type,
         config=encrypted_config,
         read_only=connection_create.read_only,
-        user_id=user_from_db.id,  # 使用数据库中获取的实际用户ID
+        # 不设置user_id，让数据库处理默认值或设为null
         connection_status=ConnectionStatus.DISCONNECTED,
     )
     
@@ -315,8 +289,8 @@ def delete_database_connection(
             detail=f"未找到ID为 {connection_id} 的数据库连接"
         )
     
-    # 软删除
-    repo.soft_delete(session, connection)
+    # 软删除 - 传递connection_id而不是connection对象
+    repo.soft_delete(session, connection_id)
 
 
 @router.post("/admin/database/connections/{connection_id}/test", response_model=ConnectionTestResponse)
@@ -463,11 +437,6 @@ def test_database_connection_config(
         # 获取参数类
         params_class = _get_params_class_for_type(connection_config.database_type)
         
-        # 获取用户ID的安全字符串表示
-        user_id = str(user.id) if hasattr(user.id, '__str__') else user.id
-        if hasattr(user.id, 'hex'):
-            user_id = user.id.hex
-            
         # 创建临时连接对象
         temp_connection = DatabaseConnection(
             id=-1,  # 临时ID
@@ -476,7 +445,6 @@ def test_database_connection_config(
             database_type=connection_config.database_type,
             config=connection_config.config,
             read_only=connection_config.read_only,
-            user_id=user_id,
             connection_status=ConnectionStatus.DISCONNECTED,
         )
         

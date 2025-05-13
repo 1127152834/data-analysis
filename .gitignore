@@ -23,7 +23,6 @@ var/
 # 虚拟环境
 venv/
 ENV/
-.env
 .venv
 env/
 env.bak/

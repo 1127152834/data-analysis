@@ -366,7 +366,7 @@ class MySQLConnector(BaseConnector):
                     if max_rows:
                         results = cursor.fetchmany(max_rows)
                     else:
-                        results = cursor.fetchall()
+                    results = cursor.fetchall()
                 else:
                     # 对于非查询操作，返回影响的行数
                     results = [{"affected_rows": cursor.rowcount}]
