@@ -1,7 +1,7 @@
 """initialize_database
 
 Revision ID: 000000000000
-Revises: 586c4f647940
+Revises: 
 Create Date: 2025-05-13 11:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from tidb_vector.sqlalchemy import VectorType
 
 # revision identifiers, used by Alembic.
 revision = '000000000000'
-down_revision = '586c4f647940'
+down_revision = None
 branch_labels = None
 depends_on = None
 
