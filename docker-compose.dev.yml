@@ -23,7 +23,7 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     ports:
-      - "3000:3000"
+      - "15371:3000"
     environment:
       BASE_URL: http://backend
     depends_on:

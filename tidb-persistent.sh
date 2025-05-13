@@ -116,7 +116,44 @@ echo -e "${GREEN}===============================================${NC}"
 
 # 安装pymysql
 echo -e "${YELLOW}安装pymysql...${NC}"
-pip3 install pymysql || python3 -m pip install pymysql
+# 检查pymysql是否已安装
+if python3 -c "import pymysql" &>/dev/null; then
+    echo -e "${GREEN}pymysql已安装${NC}"
+else
+    echo -e "${YELLOW}尝试安装pymysql...${NC}"
+    # 首先尝试用apt安装(Ubuntu/Debian)
+    if command -v apt &>/dev/null; then
+        echo -e "${YELLOW}使用apt安装python3-pymysql...${NC}"
+        apt-get update && apt-get install -y python3-pymysql || {
+            echo -e "${RED}apt安装失败，尝试其他方式${NC}"
+        }
+    fi
+    
+    # 再次检查是否已安装
+    if ! python3 -c "import pymysql" &>/dev/null; then
+        # 检查是否是外部管理的Python环境
+        if pip3 install --dry-run pymysql 2>&1 | grep -q "externally-managed-environment"; then
+            echo -e "${YELLOW}Python环境是外部管理的，尝试使用--break-system-packages选项${NC}"
+            pip3 install --break-system-packages pymysql || {
+                echo -e "${RED}警告: pymysql安装失败。请手动安装:${NC}"
+                echo -e "${RED}  sudo apt install python3-pymysql${NC}"
+                echo -e "${RED}或创建虚拟环境后安装${NC}"
+            }
+        else
+            # 尝试常规pip安装方式
+            pip3 install pymysql || python3 -m pip install pymysql || {
+                echo -e "${RED}警告: pymysql安装失败。将尝试继续执行，但可能会出现错误${NC}"
+            }
+        fi
+    fi
+fi
+
+# 验证pymysql安装
+if ! python3 -c "import pymysql" &>/dev/null; then
+    echo -e "${RED}无法导入pymysql，TiFlash副本设置可能会失败${NC}"
+else
+    echo -e "${GREEN}pymysql已成功安装/验证${NC}"
+fi
 
 # 等待TiDB和TiFlash完全启动
 echo -e "${YELLOW}等待TiDB和TiFlash完全启动 (约30秒)...${NC}"

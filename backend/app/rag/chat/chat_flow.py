@@ -521,7 +521,7 @@ class ChatFlow:
                         display="查询重写以增强信息检索",
                     ),
                 )
-                
+
             # 检查问题是否可能涉及数据库查询
             is_database_query = self._is_potential_database_query(user_question, chat_history)
             
@@ -532,7 +532,7 @@ class ChatFlow:
                 logger.debug("使用数据库查询优化的问题改写模板")
             elif refined_question_prompt:
                 # 使用传入的模板
-                prompt_template = RichPromptTemplate(refined_question_prompt)
+            prompt_template = RichPromptTemplate(refined_question_prompt)
             else:
                 # 使用默认模板
                 prompt_template = RichPromptTemplate(self.engine_config.llm.condense_question_prompt)
@@ -857,7 +857,7 @@ class ChatFlow:
                     display="检索最相关的文档",
                 ),
             )
-            
+
             # 获取对话级别的数据库上下文
             db_nodes = []
             
@@ -886,14 +886,14 @@ class ChatFlow:
                     # 将数据库查询结果转换为NodeWithScore
                     if db_results:
                         db_nodes = self.retrieve_flow._process_db_results(db_results)
-                        
-                        # 如果有数据库查询结果，显示数据库查询提示
+
+            # 如果有数据库查询结果，显示数据库查询提示
                         if db_nodes and len(db_nodes) > 0:
-                            yield ChatEvent(
-                                event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
-                                payload=ChatStreamMessagePayload(
-                                    state=ChatMessageSate.DATABASE_QUERY,
-                                    display="执行数据库查询",
+                yield ChatEvent(
+                    event_type=ChatEventType.MESSAGE_ANNOTATIONS_PART,
+                    payload=ChatStreamMessagePayload(
+                        state=ChatMessageSate.DATABASE_QUERY,
+                        display="执行数据库查询",
                                     context={"db_results_count": len(db_nodes)},
                                 ),
                             )
@@ -903,7 +903,7 @@ class ChatFlow:
             
             # 调用检索流程搜索相关文档块
             relevance_chunks = self.retrieve_flow.retrieve_from_knowledge_base(query)
-            
+
             # 记录追踪结果
             span.end(
                 output={
@@ -911,7 +911,7 @@ class ChatFlow:
                     "db_results_count": len(db_nodes) if db_nodes else 0,
                 }
             )
-            
+
             # 返回相关文档块和数据库查询结果
             return relevance_chunks, db_nodes
 
