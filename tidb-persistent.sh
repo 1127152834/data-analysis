@@ -21,27 +21,33 @@ mkdir -p $TIDB_DATA_DIR
 
 echo -e "${GREEN}将使用 $TIDB_DATA_DIR 作为持久化存储目录${NC}"
 
+# 确保Python3已安装
+if ! command -v python3 &> /dev/null; then
+    echo -e "${YELLOW}Python3未安装，正在安装...${NC}"
+    apt update && apt install -y python3 python3-pip
+    echo -e "${GREEN}Python3安装完成${NC}"
+else
+    echo -e "${GREEN}Python3已安装${NC}"
+fi
+
 # 确保TiUP已安装
 if ! command -v tiup &> /dev/null; then
     echo -e "${YELLOW}TiUP未安装，正在安装...${NC}"
     curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
     
-    # 根据不同Shell添加环境变量
-    if [[ "$(uname)" == "Darwin" ]]; then
-        # Mac通常使用zsh或bash
-        if [[ -f "$HOME/.zshrc" ]]; then
-            source ~/.zshrc
-        else
-            source ~/.bash_profile
-        fi
-    else
-        # Linux通常使用bash
-        source ~/.profile
-    fi
+    # 确保TiUP可用于当前会话
+    export PATH=$PATH:$HOME/.tiup/bin
+    source $HOME/.bashrc
     
-    echo -e "${GREEN}TiUP安装完成${NC}"
+    echo -e "${GREEN}TiUP安装完成并已添加到当前会话${NC}"
 else
     echo -e "${GREEN}TiUP已安装${NC}"
+fi
+
+# 检查TiUP是否可用
+if ! command -v tiup &> /dev/null; then
+    echo -e "${RED}TiUP安装后仍然不可用，添加到PATH...${NC}"
+    export PATH=$PATH:$HOME/.tiup/bin
 fi
 
 # 停止正在运行的playground
@@ -59,6 +65,10 @@ echo -e "${GREEN}日志文件: $HOME/tidb-playground.log${NC}"
 echo -e "${GREEN}TiDB访问地址: $TIDB_HOST:$TIDB_PORT${NC}"
 echo -e "${GREEN}TiDB Dashboard: http://127.0.0.1:2379/dashboard${NC}"
 echo -e "${GREEN}===============================================${NC}"
+
+# 安装pymysql
+echo -e "${YELLOW}安装pymysql...${NC}"
+pip3 install pymysql || python3 -m pip install pymysql
 
 # 等待TiDB和TiFlash完全启动
 echo -e "${YELLOW}等待TiDB和TiFlash完全启动 (约30秒)...${NC}"
@@ -184,8 +194,7 @@ EOF
 
 # 执行TiFlash副本设置脚本
 echo -e "${BLUE}执行TiFlash副本设置...${NC}"
-pip install pymysql &>/dev/null || true  # 确保安装pymysql
-python $HOME/set_tiflash_replicas.py
+python3 $HOME/set_tiflash_replicas.py
 
 echo -e "${GREEN}===============================================${NC}"
 echo -e "${YELLOW}使用 tiup playground display 查看集群状态${NC}"
@@ -193,8 +202,16 @@ echo -e "${YELLOW}使用 tiup playground stop 停止集群${NC}"
 echo -e "${YELLOW}重启时使用 tiup playground --tag $TIDB_TAG 启动同一个集群实例${NC}"
 
 echo -e "${YELLOW}数据存储在以下位置:${NC}"
-INSTANCE_DIR=$(ls -t ~/.tiup/data | head -n 1)
-echo -e "${YELLOW}~/.tiup/data/$INSTANCE_DIR${NC}"
+if [ -d "$HOME/.tiup/data" ]; then
+    INSTANCE_DIR=$(ls -t $HOME/.tiup/data 2>/dev/null | head -n 1)
+    if [ -n "$INSTANCE_DIR" ]; then
+        echo -e "${YELLOW}~/.tiup/data/$INSTANCE_DIR${NC}"
+    else
+        echo -e "${RED}~/.tiup/data 目录存在但为空${NC}"
+    fi
+else
+    echo -e "${RED}~/.tiup/data 目录不存在，TiUP可能未正确启动${NC}"
+fi
 echo -e "${YELLOW}使用同一个tag启动可以保持数据存储在同一个目录${NC}"
 
 echo -e "${GREEN}TiFlash副本已自动配置，向量索引功能可以正常使用${NC}" 
