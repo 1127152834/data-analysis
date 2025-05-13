@@ -6,6 +6,7 @@
 
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, ClassVar, List
+from pydantic import BaseModel, Field
 
 from app.parameters import BaseParameters
 
@@ -249,4 +250,20 @@ class OracleParameters(BaseDatabaseParameters):
             else:
                 connection_str += "?" + "&".join(params)
                 
-        return connection_str 
+        return connection_str
+
+
+class DatabaseConnectionCreate(BaseModel):
+    name: str
+    description: str
+    description_for_llm: Optional[str] = None
+    table_descriptions: Optional[Dict[str, str]] = Field(default_factory=dict)
+    column_descriptions: Optional[Dict[str, Dict[str, str]]] = Field(default_factory=dict)
+
+
+class DatabaseConnectionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    description_for_llm: Optional[str] = None
+    table_descriptions: Optional[Dict[str, str]] = None
+    column_descriptions: Optional[Dict[str, Dict[str, str]]] = None 

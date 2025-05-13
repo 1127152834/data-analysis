@@ -8,6 +8,7 @@ from sqlmodel import (
     Field,
     JSON,
     DateTime,
+    Text,
     Relationship as SQLRelationship,
 )
 
@@ -56,6 +57,10 @@ class DatabaseConnection(UpdatableBaseModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)  # 主键ID
     name: str = Field(max_length=256)  # 连接名称
     description: str = Field(max_length=512)  # 连接描述
+    # LLM相关描述字段
+    description_for_llm: Optional[str] = Field(default=None, sa_column=Column(Text))  # 用于LLM的业务场景描述
+    table_descriptions: Dict = Field(default={}, sa_column=Column(JSON))  # 表描述信息，格式: {table_name: description}
+    column_descriptions: Dict = Field(default={}, sa_column=Column(JSON))  # 列描述信息，格式: {table_name: {column_name: description}}
     database_type: DatabaseType  # 数据库类型
     config: Dict = Field(default={}, sa_column=Column(JSON))  # 连接配置（包含加密的敏感信息）
     # 关联用户信息
