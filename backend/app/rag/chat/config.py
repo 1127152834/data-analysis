@@ -413,6 +413,9 @@ class ChatEngineConfig(BaseModel):
     # 知识库相关的配置
     knowledge_base: KnowledgeBaseOption = KnowledgeBaseOption()
     
+    # 数据库源列表（用于直接数据库查询）
+    database_sources: Optional[List[LinkedEntity]] = Field(default_factory=list)
+    
     # 知识图谱相关的配置
     knowledge_graph: KnowledgeGraphOption = KnowledgeGraphOption()
     
@@ -750,6 +753,32 @@ class ChatEngineConfig(BaseModel):
         )
         logger.debug(f"Retrieved {len(knowledge_bases)} knowledge bases: {[kb.id for kb in knowledge_bases]}")
         return knowledge_bases
+    
+    def get_database_sources(self, db_session: Session) -> List["DatabaseConnection"]:
+        """
+        获取与聊天引擎关联的所有数据库源
+        
+        参数:
+            db_session: 数据库会话
+            
+        返回:
+            List[DatabaseConnection]: 数据库连接对象列表
+        """
+        from app.repositories import database_connection_repo
+        
+        result = []
+        
+        # 处理直接关联的数据库源
+        if self.database_sources:
+            for db_source in self.database_sources:
+                try:
+                    db_connection = database_connection_repo.get(db_session, db_source.id)
+                    if db_connection:
+                        result.append(db_connection)
+                except Exception as e:
+                    logger.warning(f"Failed to get database connection {db_source.id}: {e}")
+        
+        return result
 
     def screenshot(self) -> dict:
         """

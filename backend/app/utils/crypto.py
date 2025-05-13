@@ -14,9 +14,9 @@ from app.core.config import settings
 def get_crypto_key() -> bytes:
     """
     获取加密密钥
-    
+
     从应用设置中获取用于加密和解密的密钥
-    
+
     返回:
         bytes: 加密密钥
     """
@@ -26,12 +26,12 @@ def get_crypto_key() -> bytes:
 def encrypt_value(value: str) -> bytes:
     """
     加密单个值
-    
+
     使用AES算法加密敏感信息
-    
+
     参数:
         value: 要加密的值
-        
+
     返回:
         bytes: 加密后的数据
     """
@@ -43,12 +43,12 @@ def encrypt_value(value: str) -> bytes:
 def decrypt_value(encrypted_value: bytes) -> str:
     """
     解密单个值
-    
+
     使用AES算法解密敏感信息
-    
+
     参数:
         encrypted_value: 加密的数据
-        
+
     返回:
         str: 解密后的值
     """
@@ -57,16 +57,18 @@ def decrypt_value(encrypted_value: bytes) -> str:
     return AESCipher(get_crypto_key()).decrypt(encrypted_value)
 
 
-def encrypt_dict_values(data: Dict[str, Any], sensitive_fields: List[str]) -> Dict[str, Any]:
+def encrypt_dict_values(
+    data: Dict[str, Any], sensitive_fields: List[str]
+) -> Dict[str, Any]:
     """
     加密字典中的敏感字段
-    
+
     遍历字典，加密指定的敏感字段
-    
+
     参数:
         data: 包含敏感信息的字典
         sensitive_fields: 需要加密的字段列表
-        
+
     返回:
         Dict[str, Any]: 处理后的字典，敏感字段已加密
     """
@@ -80,16 +82,18 @@ def encrypt_dict_values(data: Dict[str, Any], sensitive_fields: List[str]) -> Di
     return result
 
 
-def decrypt_dict_values(data: Dict[str, Any], sensitive_fields: List[str]) -> Dict[str, Any]:
+def decrypt_dict_values(
+    data: Dict[str, Any], sensitive_fields: List[str]
+) -> Dict[str, Any]:
     """
     解密字典中的敏感字段
-    
+
     遍历字典，解密指定的敏感字段
-    
+
     参数:
         data: 包含加密信息的字典
         sensitive_fields: 已加密的字段列表
-        
+
     返回:
         Dict[str, Any]: 处理后的字典，敏感字段已解密
     """
@@ -101,4 +105,4 @@ def decrypt_dict_values(data: Dict[str, Any], sensitive_fields: List[str]) -> Di
             result[field] = decrypt_value(bytes.fromhex(result[encrypted_field]))
             # 移除加密字段
             del result[encrypted_field]
-    return result 
+    return result

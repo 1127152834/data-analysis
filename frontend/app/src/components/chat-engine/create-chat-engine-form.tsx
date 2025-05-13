@@ -2,6 +2,7 @@
 
 import { type ChatEngineOptions, createChatEngine } from '@/api/chat-engines';
 import { KBListSelectForObjectValue } from '@/components/chat-engine/kb-list-select';
+import { DBListSelectForObjectValue } from '@/components/chat-engine/db-list-select';
 import { FormSection, FormSectionsProvider, useFormSectionFields } from '@/components/form-sections';
 import { LLMSelect, RerankerSelect } from '@/components/form/biz';
 import { FormCheckbox, FormInput, FormSwitch } from '@/components/form/control-widget';
@@ -32,6 +33,9 @@ const schema = z.object({
         id: z.number(),
       }).array().min(1),
     }),
+    database_sources: z.object({
+      id: z.number(),
+    }).array().optional(),
     knowledge_graph: z.object({
       depth: z.number().min(1).nullable().optional(),
     }).passthrough().optional(),
@@ -104,6 +108,12 @@ export function CreateChatEngineForm ({ defaultChatEngineOptions }: { defaultCha
                   validators={{ onChange: kbSchema, onSubmit: kbSchema }}
                 >
                   <KBListSelectForObjectValue />
+                </field.Basic>
+                <field.Basic
+                  name="engine_options.database_sources"
+                  label="数据库源"
+                >
+                  <DBListSelectForObjectValue />
                 </field.Basic>
                 <field.Inline
                   name="engine_options.hide_sources"

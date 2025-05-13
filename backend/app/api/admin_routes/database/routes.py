@@ -6,8 +6,11 @@
 
 from datetime import datetime
 from typing import List, Optional, Annotated
+import os
+import time
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile
 from sqlmodel import Session
 
 from app.models.database_connection import DatabaseConnection, DatabaseType, ConnectionStatus
@@ -22,6 +25,7 @@ from app.parameters.database_connection import (
     MongoDBParameters,
     SQLServerParameters,
     OracleParameters,
+    SQLiteParameters,
 )
 from app.utils.crypto import encrypt_dict_values
 from app.rag.database import get_connector
@@ -473,6 +477,58 @@ def test_database_connection_config(
             connector.close()
 
 
+@router.post("/admin/database/sqlite-upload", status_code=status.HTTP_200_OK)
+def upload_sqlite_file(
+    file: UploadFile,
+    session: Annotated[Session, Depends(get_db_session)],
+    user: User = CurrentSuperuserDep,
+):
+    """
+    上传SQLite数据库文件
+    
+    上传SQLite数据库文件并保存到指定目录
+    """
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="文件名不能为空"
+        )
+    
+    # 检查文件扩展名
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ['.db', '.sqlite', '.sqlite3']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的文件类型 {file_ext}，仅支持 .db, .sqlite, .sqlite3"
+        )
+    
+    # 导入存储模块
+    from app.file_storage.local import LocalFileStorage
+    
+    # 使用时间戳和UUID生成唯一文件名
+    timestamp = int(time.time())
+    unique_id = uuid.uuid4().hex
+    safe_filename = f"{timestamp}_{unique_id}{file_ext}"
+    
+    # 使用LocalFileStorage保存文件
+    storage = LocalFileStorage()
+    file_path = os.path.join("sqlite", safe_filename)  # 相对于存储根目录的路径
+    
+    # 保存文件
+    storage.save(file_path, file.file)
+    
+    # 获取完整的文件系统路径
+    full_path = storage.path(file_path)
+    
+    # 返回文件信息
+    return {
+        "filename": safe_filename,
+        "original_filename": file.filename,
+        "file_path": full_path,
+        "relative_path": file_path  # 相对路径，用于存储到数据库配置中
+    }
+
+
 def _get_params_class_for_type(database_type: DatabaseType) -> type:
     """
     根据数据库类型获取对应的参数类
@@ -492,6 +548,7 @@ def _get_params_class_for_type(database_type: DatabaseType) -> type:
         DatabaseType.MONGODB: MongoDBParameters,
         DatabaseType.SQLSERVER: SQLServerParameters,
         DatabaseType.ORACLE: OracleParameters,
+        DatabaseType.SQLITE: SQLiteParameters,
     }
     
     if database_type not in type_to_class:

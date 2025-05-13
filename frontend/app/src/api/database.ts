@@ -6,7 +6,7 @@ import { z } from 'zod';
  * 支持的数据库类型
  * 与后端 app/models/database_connection.py 中的 DatabaseType 枚举对应
  */
-export type DatabaseConnectionType = 'mysql' | 'postgresql' | 'mongodb' | 'sqlserver' | 'oracle';
+export type DatabaseConnectionType = 'mysql' | 'postgresql' | 'mongodb' | 'sqlserver' | 'oracle' | 'sqlite';
 
 /**
  * 数据库连接状态
@@ -20,7 +20,7 @@ export type DatabaseConnectionStatus = 'connected' | 'disconnected' | 'error';
 export type DatabaseAccessRole = 'admin' | 'user';
 
 // Zod Schema 定义
-export const databaseConnectionTypeSchema = z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle']);
+export const databaseConnectionTypeSchema = z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle', 'sqlite']);
 export const databaseConnectionStatusSchema = z.enum(['connected', 'disconnected', 'error']);
 export const databaseAccessRoleSchema = z.enum(['admin', 'user']);
 
@@ -265,4 +265,24 @@ export async function testSavedDatabaseConnection(connectionId: number): Promise
     method: 'POST',
     headers: await authenticationHeaders(),
   }).then(handleResponse(connectionTestResponseSchema));
+}
+
+/**
+ * 上传SQLite数据库文件
+ * @param file 要上传的SQLite数据库文件
+ */
+export async function uploadSQLiteFile(file: File): Promise<{ filename: string; relative_path: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  return fetch(requestUrl('/api/v1/admin/database/sqlite-upload'), {
+    method: 'POST',
+    headers: await authenticationHeaders(),
+    body: formData,
+  }).then(handleResponse(z.object({
+    filename: z.string(),
+    original_filename: z.string(),
+    file_path: z.string(),
+    relative_path: z.string()
+  })));
 } 

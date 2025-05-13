@@ -22,29 +22,28 @@ def get_chunk_by_id(chunk_id: str, db: SessionDep):
     根据Chunk ID获取chunk内容
     """
     logger.info(f"正在查询ID为 {chunk_id} 的chunk")
-    
+
     try:
         # 尝试调用repo获取chunk
         chunk_repo = ChunkRepo(db)
         chunk = chunk_repo.get_chunk_by_id(chunk_id)
-        
+
         if not chunk:
             logger.warning(f"找不到ID为 {chunk_id} 的chunk")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"找不到ID为 {chunk_id} 的chunk"
+                detail=f"找不到ID为 {chunk_id} 的chunk",
             )
-            
+
         return {"content": chunk.text}
     except ValueError as e:
         logger.error(f"查询chunk时出现值错误: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"参数错误: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"参数错误: {str(e)}"
         )
     except Exception as e:
         logger.error(f"查询chunk时出现异常: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"服务器内部错误: {str(e)}"
+            detail=f"服务器内部错误: {str(e)}",
         )

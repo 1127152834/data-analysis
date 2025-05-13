@@ -261,6 +261,7 @@ class SQLiteParameters(BaseModel):
     用于测试和演示
     """
     database: str = Field(..., description="数据库文件路径")
+    file_path: Optional[str] = Field(None, description="数据库文件路径的别名")
     
     # 其他参数
     pool_size: int = Field(5, description="连接池大小")
@@ -269,10 +270,20 @@ class SQLiteParameters(BaseModel):
     # 敏感字段列表，用于字段加密/解密
     SENSITIVE_FIELDS: List[str] = []
     
-    @validator('database')
-    def validate_database(cls, v):
+    @validator('database', pre=True)
+    def validate_database(cls, v, values):
+        # 如果database为空但file_path有值，使用file_path的值
+        if not v and 'file_path' in values and values['file_path']:
+            return values['file_path']
         if not v:
-            raise ValueError("Database file path cannot be empty")
+            raise ValueError("数据库文件路径不能为空")
+        return v
+    
+    @validator('file_path', pre=True)
+    def validate_file_path(cls, v, values):
+        # 如果file_path为空但database有值，使用database的值
+        if not v and 'database' in values and values['database']:
+            return values['database']
         return v
     
     def get_connection_string(self) -> str:
@@ -282,6 +293,9 @@ class SQLiteParameters(BaseModel):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SQLiteParameters':
         """从字典创建参数对象"""
+        # 处理file_path和database的兼容性
+        if 'file_path' in data and not 'database' in data:
+            data['database'] = data['file_path']
         return cls(**data)
 
 

@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://127.0.0.1:6379/0"  # Celery结果后端URL
 
     # TODO: 将以下配置移至`option`表，使其可以通过控制台由管理员配置
-    TIDB_AI_CHAT_ENDPOINT: str = "https://tidb.ai/api/v1/chats"  # TiDB.AI聊天API端点
+    TIDB_AI_CHAT_ENDPOINT: str = "https://localhost:3001/api/v1/chats"  # TiDB.AI聊天API端点
     TIDB_AI_API_KEY: SecretStr | None = None  # TiDB.AI API密钥
 
     COMPLIED_INTENT_ANALYSIS_PROGRAM_PATH: str | None = None  # 意图分析程序路径

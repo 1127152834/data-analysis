@@ -98,24 +98,24 @@ def get_kb_document_chunk(
 ) -> ChunkItem:
     """
     获取知识库中指定文档的特定chunk
-    
+
     Args:
         session: 数据库会话
         user: 当前超级用户
         kb_id: 知识库ID
         doc_id: 文档ID
         chunk_hash: chunk哈希值或ID
-        
+
     Returns:
         匹配的chunk，如果未找到则抛出404异常
     """
     try:
         kb = knowledge_base_repo.must_get(session, kb_id)
         chunk_repo = ChunkRepo(get_kb_chunk_model(kb))
-        
+
         # 优先尝试使用文档ID和块哈希查询
         chunk = chunk_repo.get_chunk_by_hash(session, doc_id, chunk_hash)
-        
+
         # 如果找不到，尝试使用ID查询
         if not chunk:
             try:
@@ -126,13 +126,13 @@ def get_kb_document_chunk(
             except (ValueError, TypeError):
                 # 如果转换失败，说明不是有效的ID，继续使用哈希查询
                 pass
-        
+
         if not chunk:
             raise HTTPException(
                 status_code=404,
                 detail=f"找不到哈希值或ID为 {chunk_hash} 的chunk",
             )
-            
+
         return chunk
     except HTTPException:
         raise

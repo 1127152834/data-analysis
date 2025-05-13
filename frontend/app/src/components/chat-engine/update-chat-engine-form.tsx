@@ -2,6 +2,7 @@
 
 import { type ChatEngine, type ChatEngineKnowledgeGraphOptions, type ChatEngineLLMOptions, type ChatEngineOptions, updateChatEngine } from '@/api/chat-engines';
 import { KBListSelect } from '@/components/chat-engine/kb-list-select';
+import { DBListSelect } from '@/components/chat-engine/db-list-select';
 import { LLMSelect, RerankerSelect } from '@/components/form/biz';
 import { FormCheckbox, FormInput, FormSwitch } from '@/components/form/control-widget';
 import { formFieldLayout } from '@/components/form/field-layout';
@@ -93,6 +94,11 @@ export function UpdateChatEngineForm ({ chatEngine, defaultChatEngineOptions }: 
             <GeneralSettingsField accessor={kbAccessor} schema={kbSchema}>
               <field.Basic required name="value" label="知识库">
                 <KBListSelect />
+              </field.Basic>
+            </GeneralSettingsField>
+            <GeneralSettingsField accessor={dbAccessor} schema={dbSchema}>
+              <field.Basic name="value" label="数据库源">
+                <DBListSelect />
               </field.Basic>
             </GeneralSettingsField>
             <GeneralSettingsField accessor={hideSourcesAccessor} schema={hideSourcesSchema}>
@@ -337,6 +343,24 @@ const kbAccessor: GeneralSettingsFieldAccessor<ChatEngine, number[] | null> = {
   },
 };
 const kbSchema = z.number().array().min(1);
+
+const dbAccessor: GeneralSettingsFieldAccessor<ChatEngine, number[] | undefined> = {
+  path: ['engine_options', 'database_sources'],
+  get (engine: ChatEngine) {
+    return engine.engine_options.database_sources?.map((db: { id: number }) => db.id) || undefined;
+  },
+  set (engine: ChatEngine, value: number[] | undefined) {
+    return {
+      ...engine,
+      engine_options: {
+        ...engine.engine_options,
+        database_sources: value ? value.map((id: number) => ({ id })) : undefined,
+      },
+    };
+  },
+};
+
+const dbSchema = z.array(z.number()).optional();
 
 const kgEnabledAccessor = kgOptionAccessor('enabled');
 const kgEnabledSchema = z.boolean().nullable();

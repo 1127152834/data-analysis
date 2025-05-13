@@ -7,7 +7,8 @@ import {
   createDatabaseConnection, 
   testDatabaseConfig,
   ConnectionTestResponse,
-  getDatabaseTypes
+  getDatabaseTypes,
+  uploadSQLiteFile
 } from '@/api/database';
 import { DatabaseTypeSelect } from './DatabaseTypeSelect';
 import { TestConnectionButton } from './TestConnectionButton';
@@ -39,7 +40,7 @@ interface CreateDatabaseConnectionFormProps {
 const baseSchema = z.object({
   name: z.string().min(1, '不能为空'),
   description: z.string().min(1, '不能为空'),
-  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle'], {
+  database_type: z.enum(['mysql', 'postgresql', 'mongodb', 'sqlserver', 'oracle', 'sqlite'], {
     errorMap: () => ({ message: '不能为空' })
   }),
   config: z.record(z.any()),
@@ -81,6 +82,13 @@ const oracleSchema = baseSchema.extend({
   ),
 });
 
+// SQLite的schema
+const sqliteSchema = baseSchema.extend({
+  config: z.object({
+    file_path: z.string().min(1, '不能为空'),
+  }).passthrough(),
+});
+
 // 定义更具体的配置类型
 interface ConfigType {
   use_password?: boolean;
@@ -92,6 +100,8 @@ interface ConfigType {
   connection_string?: string;
   service_name?: string;
   sid?: string;
+  file_path?: string;
+  sqlite_file?: File;
   [key: string]: any;
 }
 
@@ -165,6 +175,37 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
         if (typeof value.config.port === 'string') {
           value.config.port = parseInt(value.config.port, 10);
         }
+        
+        // 处理SQLite文件上传
+        if (value.database_type === 'sqlite') {
+          const sqliteFile = value.config.sqlite_file;
+          if (!sqliteFile) {
+            toast.error('请上传SQLite数据库文件');
+            throw new Error('请上传SQLite数据库文件');
+          }
+          
+          try {
+            // 显示上传中提示
+            const uploadToastId = toast.loading('正在上传SQLite数据库文件...');
+            
+            // 上传文件
+            const uploadResult = await uploadSQLiteFile(sqliteFile);
+            
+            // 更新提示
+            toast.success('SQLite数据库文件上传成功', {
+              id: uploadToastId
+            });
+            
+            // 将上传后的文件路径设置到配置中
+            value.config.file_path = uploadResult.relative_path;
+            
+            // 移除文件对象，避免序列化问题
+            delete value.config.sqlite_file;
+          } catch (error) {
+            toast.error('上传SQLite数据库文件失败: ' + (error instanceof Error ? error.message : String(error)));
+            throw error;
+          }
+        }
       }
       
       // 根据数据库类型选择schema
@@ -180,6 +221,9 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
           break;
         case 'oracle':
           schema = oracleSchema;
+          break;
+        case 'sqlite':
+          schema = sqliteSchema;
           break;
         default:
           schema = baseSchema;
@@ -208,17 +252,29 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
     form.setFieldValue('database_type', type);
     setDatabaseTypeState(type);
 
-    let defaultPort = 0;
-    if (type === 'mysql') defaultPort = 3306;
-    else if (type === 'postgresql') defaultPort = 5432;
-    else if (type === 'sqlserver') defaultPort = 1433;
-    else if (type === 'oracle') defaultPort = 1521;
-
-    form.setFieldValue('config', {
+    // 默认配置，确保所有可能的字段都有初始值
+    let defaultConfig: ConfigType = {
       use_password: usePassword,
-      port: Number(defaultPort)
-    } as ConfigType);
+      host: '',     // 初始化为空字符串
+      user: '',     // 初始化为空字符串
+      database: '', // 初始化为空字符串
+    };
+    
+    // 根据数据库类型设置端口
+    if (type === 'mysql') defaultConfig.port = 3306;
+    else if (type === 'postgresql') defaultConfig.port = 5432;
+    else if (type === 'sqlserver') defaultConfig.port = 1433;
+    else if (type === 'oracle') defaultConfig.port = 1521;
+    else if (type === 'sqlite') {
+      // SQLite 类型不需要这些字段，可以删除
+      delete defaultConfig.host;
+      delete defaultConfig.user;
+      delete defaultConfig.port;
+      // 但确保file_path有初始值
+      defaultConfig.file_path = '';
+    }
 
+    form.setFieldValue('config', defaultConfig);
     setTestConnectionResult(null);
   }, [form, usePassword, setDatabaseTypeState]);
 
@@ -520,6 +576,40 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
                       <field.Basic name="config.sid" label="SID" description="例如 ORCL">
                         <FormInput />
                       </field.Basic>
+                    </SubSection>
+                  )}
+
+                  {databaseType === 'sqlite' && (
+                    <SubSection title="连接信息">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label htmlFor="sqlite_file" className="text-sm font-medium">
+                            数据库文件
+                            <span className="text-red-500 ml-1">*</span>
+                          </label>
+                          <input
+                            id="sqlite_file"
+                            type="file"
+                            accept=".db,.sqlite,.sqlite3"
+                            className="w-full border border-gray-200 rounded-md p-2"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                form.setFieldValue('config.sqlite_file', file);
+                              }
+                            }}
+                            disabled={form.state.isSubmitting || transitioning}
+                          />
+                          <p className="text-sm text-muted-foreground">
+                            上传SQLite数据库文件，支持.db、.sqlite、.sqlite3格式
+                          </p>
+                        </div>
+                        {form.getFieldValue('config.sqlite_file') && (
+                          <p className="text-sm">
+                            已选择文件: {form.getFieldValue('config.sqlite_file').name}
+                          </p>
+                        )}
+                      </div>
                     </SubSection>
                   )}
                 </>

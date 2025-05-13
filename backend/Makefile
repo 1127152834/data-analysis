@@ -12,6 +12,13 @@ migrate:
 	@echo "Migrating database..."
 	@uv run alembic upgrade head
 
+reset_migrations:
+	@echo "Resetting migrations..."
+	@uv run python -c "from app.core.db import engine; from sqlalchemy import text; with engine.begin() as conn: conn.execute(text('DROP TABLE IF EXISTS alembic_version')); print('Migration history reset!')"
+	@echo "Creating initial schema migration..."
+	@rm -rf app/alembic/versions/*
+	@uv run alembic revision --autogenerate -m "initial_schema"
+
 lint:
 	@echo "Linting code..."
 	@uv run ruff check .

@@ -31,6 +31,7 @@ from app.repositories.graph import get_kb_graph_repo
 
 logger = logging.getLogger("knowledge_base")
 
+
 class KnowledgeBaseRepo(BaseRepo):
     model_cls = KnowledgeBase
 
@@ -372,7 +373,7 @@ class KnowledgeBaseRepo(BaseRepo):
         self, session: Session, kb_id: int
     ) -> List[ChatEngine]:
         logger.debug(f"Listing chat engines linked to knowledge base ID {kb_id}")
-        
+
         # Get engines with legacy linked_knowledge_base.id field
         query = select(ChatEngine).where(
             ChatEngine.deleted_at == None,
@@ -381,14 +382,17 @@ class KnowledgeBaseRepo(BaseRepo):
                     ChatEngine.engine_options,
                     "$.knowledge_base.linked_knowledge_base.id",
                 )
-            ) == str(kb_id),  # Convert to string since JSON values are strings
+            )
+            == str(kb_id),  # Convert to string since JSON values are strings
         )
         logger.debug(f"SQL Query for legacy linked_knowledge_base: {str(query)}")
-        
+
         # Execute the query
         chat_engines = session.exec(query).all()
-        logger.debug(f"Found {len(chat_engines)} chat engines with linked_knowledge_base.id = {kb_id}")
-        
+        logger.debug(
+            f"Found {len(chat_engines)} chat engines with linked_knowledge_base.id = {kb_id}"
+        )
+
         # Check linked_knowledge_bases array with id field matching kb_id
         # This is more complex as we need to check if kb_id exists in the array
         kb_id_str = str(kb_id)
@@ -401,23 +405,29 @@ class KnowledgeBaseRepo(BaseRepo):
                     "$.knowledge_base.linked_knowledge_bases",
                 ),
                 f'{{"id":{kb_id}}}',
-                "$"
-            )
+                "$",
+            ),
         )
         logger.debug(f"SQL Query for linked_knowledge_bases: {str(linked_kbs_query)}")
-        
+
         # Execute the linked_knowledge_bases query
         linked_kbs_engines = session.exec(linked_kbs_query).all()
-        logger.debug(f"Found {len(linked_kbs_engines)} chat engines with linked_knowledge_bases containing ID {kb_id}")
-        
+        logger.debug(
+            f"Found {len(linked_kbs_engines)} chat engines with linked_knowledge_bases containing ID {kb_id}"
+        )
+
         # Combine results without duplicates
-        all_engines = list({engine.id: engine for engine in chat_engines + linked_kbs_engines}.values())
+        all_engines = list(
+            {engine.id: engine for engine in chat_engines + linked_kbs_engines}.values()
+        )
         logger.debug(f"Total unique engines linked: {len(all_engines)}")
-        
+
         # Print engine details for debugging
         for engine in all_engines:
-            logger.debug(f"Engine {engine.id}: {engine.name}, options: {engine.engine_options}")
-        
+            logger.debug(
+                f"Engine {engine.id}: {engine.name}, options: {engine.engine_options}"
+            )
+
         return all_engines
 
 

@@ -44,6 +44,7 @@ export interface ChatEngineOptions {
   post_verification_url?: string | null; // 后验证URL
   post_verification_token?: string | null; // 后验证Token
   hide_sources?: boolean | null;        // 是否隐藏来源
+  database_sources?: { id: number }[] | null; // 数据库源列表
 }
 
 /**
@@ -129,6 +130,7 @@ const chatEngineOptionsSchema = z.object({
   post_verification_url: z.string().nullable().optional(),
   post_verification_token: z.string().nullable().optional(),
   hide_sources: z.boolean().nullable().optional(),
+  database_sources: z.object({ id: z.number() }).array().nullable().optional(),
 }).passthrough()
   .refine(option => {
     if (!option.knowledge_base?.linked_knowledge_bases?.length) {

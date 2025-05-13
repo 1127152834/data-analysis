@@ -1,3 +1,6 @@
+import type { AllSettings } from '@/api/site-settings';
+import { SettingsField } from '@/components/settings/SettingsField';
+
 export function LangfuseSettings ({ schema, hideTitle, disabled, onChanged }: { schema: AllSettings, hideTitle?: boolean, disabled?: boolean, onChanged?: () => void }) {
   return (
     <section className="space-y-6">

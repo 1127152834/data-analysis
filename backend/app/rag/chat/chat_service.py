@@ -52,9 +52,10 @@ logger = logging.getLogger(__name__)
 
 class ChatResult(BaseModel):
     """聊天结果数据模型"""
-    chat_id: UUID          # 聊天会话ID
-    message_id: int        # 消息ID
-    content: str           # 消息内容
+
+    chat_id: UUID  # 聊天会话ID
+    message_id: int  # 消息ID
+    content: str  # 消息内容
     trace: Optional[str] = None  # 追踪链接
     sources: Optional[List[SourceDocument]] = []  # 来源文档
 
@@ -76,12 +77,12 @@ def get_final_chat_result(
     """
     trace, sources, content = None, [], ""
     chat_id, message_id = None, None
-    
+
     # 遍历事件流
     for m in generator:
         if not isinstance(m, ChatEvent):
             continue
-            
+
         # 处理不同事件类型
         if m.event_type == ChatEventType.MESSAGE_ANNOTATIONS_PART:
             if m.payload.state == ChatMessageSate.SOURCE_NODES:
@@ -97,7 +98,7 @@ def get_final_chat_result(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 detail=m.payload,
             )
-    
+
     return ChatResult(
         chat_id=chat_id,
         message_id=message_id,
@@ -120,7 +121,7 @@ def user_can_view_chat(chat: DBChat, user: Optional[User]) -> bool:
     # 匿名或公开聊天：所有人可见
     # 非匿名聊天：仅所有者或超级用户可见
     return (
-        not chat.user_id 
+        not chat.user_id
         or chat.visibility == ChatVisibility.PUBLIC
         or (user and (user.is_superuser or chat.user_id == user.id))
     )
@@ -164,22 +165,19 @@ def get_graph_data_from_chat_message(
     if "version" not in graph_data:
         kb = engine_config.get_knowledge_bases(db_session)[0]
         graph_store = get_kb_tidb_graph_store(db_session, kb)
-        return graph_store.get_subgraph_by_relationship_ids(
-            graph_data["relationships"]
-        )
+        return graph_store.get_subgraph_by_relationship_ids(graph_data["relationships"])
 
     # 验证并处理存储的知识图谱
     stored_kg = StoredKnowledgeGraph.model_validate(graph_data)
-    
+
     # 处理单知识库情况
     if stored_kg.knowledge_base_id:
         kb = knowledge_base_repo.must_get(db_session, stored_kg.knowledge_base_id)
         graph_store = get_kb_tidb_graph_store(db_session, kb)
         return graph_store.get_subgraph_by_relationship_ids(
-            ids=stored_kg.relationships, 
-            query=stored_kg.query
+            ids=stored_kg.relationships, query=stored_kg.query
         )
-    
+
     # 处理多知识库情况
     elif stored_kg.knowledge_base_ids:
         kg_store_map = {}
@@ -199,8 +197,7 @@ def get_graph_data_from_chat_message(
             kg_store = kg_store_map.get(stored_subgraph.knowledge_base_id)
             if kg_store:
                 subgraph = kg_store.get_subgraph_by_relationship_ids(
-                        stored_subgraph.relationships,
-                        stored_kg.query
+                    stored_subgraph.relationships, stored_kg.query
                 )
             relationship_set.update(subgraph.relationships)
             entity_set.update(subgraph.entities)
@@ -375,17 +372,17 @@ def get_chat_message_recommend_questions(
         prompt_template,
         chat_message_content=chat_message.content,
     )
-    
+
     # 处理生成结果
     recommend_question_list = [
-        q.strip() 
-        for q in recommend_questions.splitlines() 
-        if q.strip()
+        q.strip() for q in recommend_questions.splitlines() if q.strip()
     ]
 
     # 校验生成质量
-    if any(c in recommend_questions for c in ("##", "**")) or \
-       max(len(q) for q in recommend_question_list) > 500:
+    if (
+        any(c in recommend_questions for c in ("##", "**"))
+        or max(len(q) for q in recommend_question_list) > 500
+    ):
         # 重新生成格式错误的问题
         recommend_questions = llm.predict(
             prompt_template,
@@ -393,10 +390,12 @@ def get_chat_message_recommend_questions(
         )
 
     # 存储到数据库
-    db_session.add(RecommendQuestion(
+    db_session.add(
+        RecommendQuestion(
             chat_message_id=chat_message.id,
             questions=recommend_question_list,
-    ))
+        )
+    )
     db_session.commit()
 
     return recommend_question_list
