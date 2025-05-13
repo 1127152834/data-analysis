@@ -232,6 +232,39 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
       // 验证表单
       schema.parse(value);
       
+      // 判断是否需要测试连接
+      const shouldTestConnection = true; // 默认启用，也可以添加一个开关让用户选择
+
+      // 如果需要测试连接
+      if (shouldTestConnection) {
+        // 显示测试连接中的提示
+        const testToastId = toast.loading('正在测试连接...');
+        
+        try {
+          // 准备测试连接的配置
+          const testResult = await handleTestConnection();
+          
+          // 如果测试失败，中止创建过程
+          if (!testResult.success) {
+            toast.error('连接测试失败，无法创建连接', { id: testToastId });
+            throw new Error(`连接测试失败: ${testResult.message}`);
+          }
+          
+          // 测试成功，更新测试提示
+          toast.success('连接测试成功', { id: testToastId });
+          
+          // 将test_connection参数设置为true
+          value.test_connection = true;
+        } catch (error) {
+          // 处理测试过程中的错误
+          toast.error('连接测试过程出错', { id: testToastId });
+          throw error;
+        }
+      } else {
+        // 不测试连接，将test_connection设为false
+        value.test_connection = false;
+      }
+      
       // 创建连接
       console.log("提交数据:", value);
       const newConnection = await createDatabaseConnection(value as DatabaseConnectionCreatePayload);
@@ -275,6 +308,8 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
     }
 
     form.setFieldValue('config', defaultConfig);
+    // 确保read_only有默认值
+    form.setFieldValue('read_only', true);
     setTestConnectionResult(null);
   }, [form, usePassword, setDatabaseTypeState]);
 
@@ -631,6 +666,22 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
                       checked={form.getFieldValue('read_only')}
                       onCheckedChange={(checked) => {
                         form.setFieldValue('read_only', Boolean(checked));
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2 mb-4">
+                  <div className="flex flex-row items-center justify-between py-4">
+                    <div className="flex flex-col space-y-0.5">
+                      <label className="text-sm font-medium">创建前测试连接</label>
+                      <p className="text-sm text-muted-foreground">在创建连接前验证连接是否可用</p>
+                    </div>
+                    <Switch
+                      id="testConnection"
+                      checked={form.getFieldValue('test_connection') !== false}
+                      onCheckedChange={(checked) => {
+                        form.setFieldValue('test_connection', Boolean(checked));
                       }}
                     />
                   </div>
