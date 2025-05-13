@@ -114,6 +114,8 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [submissionError, setSubmissionError] = useState<unknown>();
   const [usePassword, setUsePassword] = useState(false);
+  const [readOnly, setReadOnly] = useState(true);
+  const [testBeforeCreate, setTestBeforeCreate] = useState(true);
 
   // 新增异步获取数据库类型
   const [types, setTypes] = useState<Array<{ value: DatabaseConnectionType; label: string }>>([]);
@@ -148,7 +150,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
         use_password: false
       } as ConfigType,
       read_only: true,
-      test_connection: false,
+      test_connection: true,
     },
     onSubmit: onSubmitHelper(baseSchema, async (value) => {
       // 检查数据库类型是否已选择
@@ -233,7 +235,7 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
       schema.parse(value);
       
       // 判断是否需要测试连接
-      const shouldTestConnection = true; // 默认启用，也可以添加一个开关让用户选择
+      const shouldTestConnection = testBeforeCreate;
 
       // 如果需要测试连接
       if (shouldTestConnection) {
@@ -317,6 +319,15 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
   useEffect(() => {
     form.setFieldValue('config.use_password', usePassword);
   }, [usePassword, form]);
+
+  // 同步其他开关状态到表单
+  useEffect(() => {
+    form.setFieldValue('read_only', readOnly);
+  }, [readOnly, form]);
+
+  useEffect(() => {
+    form.setFieldValue('test_connection', testBeforeCreate);
+  }, [testBeforeCreate, form]);
 
   const handleTestConnection = async (): Promise<ConnectionTestResponse> => {
     if (!databaseType) {
@@ -663,8 +674,9 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
                     </div>
                     <Switch
                       id="readOnly"
-                      checked={form.getFieldValue('read_only')}
+                      checked={readOnly}
                       onCheckedChange={(checked) => {
+                        setReadOnly(Boolean(checked));
                         form.setFieldValue('read_only', Boolean(checked));
                       }}
                     />
@@ -679,8 +691,9 @@ export function CreateDatabaseConnectionForm({ onCreated, transitioning }: Creat
                     </div>
                     <Switch
                       id="testConnection"
-                      checked={form.getFieldValue('test_connection') !== false}
+                      checked={testBeforeCreate}
                       onCheckedChange={(checked) => {
+                        setTestBeforeCreate(Boolean(checked));
                         form.setFieldValue('test_connection', Boolean(checked));
                       }}
                     />

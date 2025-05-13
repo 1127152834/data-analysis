@@ -7,7 +7,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 创建持久化数据目录
+# 默认参数
 TIDB_DATA_DIR="$HOME/tidb-data"
 TIDB_TAG="persistent"
 TIDB_HOST="127.0.0.1"
@@ -16,10 +16,58 @@ TIDB_USER="root"
 TIDB_PASSWORD=""
 TIDB_DATABASE="test" # 默认数据库名称
 
-# 确保目录存在
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p|--port)
+      TIDB_PORT="$2"
+      shift 2
+      ;;
+    -h|--host)
+      TIDB_HOST="$2"
+      shift 2
+      ;;
+    -t|--tag)
+      TIDB_TAG="$2"
+      shift 2
+      ;;
+    -d|--database)
+      TIDB_DATABASE="$2"
+      shift 2
+      ;;
+    -u|--user)
+      TIDB_USER="$2"
+      shift 2
+      ;;
+    --password)
+      TIDB_PASSWORD="$2"
+      shift 2
+      ;;
+    --help)
+      echo "用法: $0 [选项]"
+      echo "选项:"
+      echo "  -p, --port PORT       指定TiDB端口 (默认: 4000)"
+      echo "  -h, --host HOST       指定TiDB主机 (默认: 127.0.0.1)"
+      echo "  -t, --tag TAG         指定TiUP实例标签 (默认: persistent)"
+      echo "  -d, --database DB     指定默认数据库 (默认: test)"
+      echo "  -u, --user USER       指定TiDB用户名 (默认: root)"
+      echo "  --password PASSWORD   指定TiDB密码 (默认: 空)"
+      echo "  --help                显示此帮助信息"
+      exit 0
+      ;;
+    *)
+      echo "未知选项: $1"
+      echo "使用 --help 查看帮助"
+      exit 1
+      ;;
+  esac
+done
+
+# 创建持久化数据目录
 mkdir -p $TIDB_DATA_DIR
 
 echo -e "${GREEN}将使用 $TIDB_DATA_DIR 作为持久化存储目录${NC}"
+echo -e "${GREEN}TiDB将使用端口: $TIDB_PORT${NC}"
 
 # 确保Python3已安装
 if ! command -v python3 &> /dev/null; then
@@ -56,7 +104,7 @@ tiup playground stop
 
 # 使用tag启动新的playground，使用nohup确保后台运行
 echo -e "${YELLOW}启动持久化TiDB集群...${NC}"
-nohup tiup playground --db 1 --pd 1 --kv 1 --tiflash 1 --tag $TIDB_TAG > $HOME/tidb-playground.log 2>&1 &
+nohup tiup playground --db.port $TIDB_PORT --db 1 --pd 1 --kv 1 --tiflash 1 --tag $TIDB_TAG > $HOME/tidb-playground.log 2>&1 &
 TIDB_PID=$!
 
 echo -e "${GREEN}===============================================${NC}"
@@ -199,7 +247,7 @@ python3 $HOME/set_tiflash_replicas.py
 echo -e "${GREEN}===============================================${NC}"
 echo -e "${YELLOW}使用 tiup playground display 查看集群状态${NC}"
 echo -e "${YELLOW}使用 tiup playground stop 停止集群${NC}"
-echo -e "${YELLOW}重启时使用 tiup playground --tag $TIDB_TAG 启动同一个集群实例${NC}"
+echo -e "${YELLOW}重启时使用 tiup playground --tag $TIDB_TAG --db.port $TIDB_PORT 启动同一个集群实例${NC}"
 
 echo -e "${YELLOW}数据存储在以下位置:${NC}"
 if [ -d "$HOME/.tiup/data" ]; then
