@@ -23,6 +23,27 @@ export interface RootProvidersProps {
   experimentalFeatures: Partial<ExperimentalFeatures>;
 }
 
+// 将Provider分层，减少渲染树级联
+const AuthProviderLayer = ({ 
+  me, 
+  isLoading, 
+  isValidating, 
+  reload, 
+  children 
+}: { 
+  me: MeInfo | undefined, 
+  isLoading: boolean, 
+  isValidating: boolean, 
+  reload: () => void, 
+  children: ReactNode 
+}) => (
+  <AuthProvider me={me} isLoading={isLoading} isValidating={isValidating} reload={reload}>
+    <ChatsProvider>
+      {children}
+    </ChatsProvider>
+  </AuthProvider>
+);
+
 export function RootProviders ({ me, settings, bootstrapStatus, experimentalFeatures, children }: RootProvidersProps) {
   const { data, isValidating, isLoading, mutate } = useSWR('api.users.me', getMe, {
     fallbackData: me,
@@ -43,12 +64,15 @@ export function RootProviders ({ me, settings, bootstrapStatus, experimentalFeat
           value={settings}>
           <ExperimentalFeaturesProvider features={experimentalFeatures}>
             <GtagProvider gtagId={settings.ga_id} configured>
-              <AuthProvider me={data} isLoading={isLoading} isValidating={isValidating} reload={() => mutate(data, { revalidate: true })}>
-                <ChatsProvider>
-                  {children}
-                  <Toaster cn={cn} />
-                </ChatsProvider>
-              </AuthProvider>
+              <AuthProviderLayer 
+                me={data} 
+                isLoading={isLoading} 
+                isValidating={isValidating} 
+                reload={() => mutate(data, { revalidate: true })}
+              >
+                {children}
+                <Toaster cn={cn} />
+              </AuthProviderLayer>
             </GtagProvider>
           </ExperimentalFeaturesProvider>
         </SettingProvider>

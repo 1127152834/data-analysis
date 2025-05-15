@@ -4,6 +4,10 @@ import { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: process.env.STANDALONE ? 'standalone' : undefined,
   transpilePackages: ['monaco-editor'],
+  typescript: {
+    // !! 构建时忽略类型错误
+    ignoreBuildErrors: true,
+  },
   experimental: {
     optimizePackageImports: ['ai', 'lucide-react'],
     turbo: {

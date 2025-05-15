@@ -87,6 +87,7 @@
     "@storybook/test": "^8.4.7",
     "@svgr/webpack": "^8.1.0",
     "@tanstack/react-form": "^0.40.4",
+    "@tanstack/react-query": "^5.26.0",
     "@tanstack/react-table": "^8.20.5",
     "@tanstack/table-core": "^8.20.5",
     "@tanstack/zod-form-adapter": "^0.40.4",

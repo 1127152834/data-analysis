@@ -1,31 +1,21 @@
-'use client';
+import { getPublicSiteSettings } from '@/api/site-settings';
+import { MainLayoutClient } from './layout-client';
+import { ReactNode } from 'react';
+import { cache } from 'react';
 
-import { SiteSidebar } from '@/app/(main)/nav';
-import { SiteHeaderLargeScreen, SiteHeaderSmallScreen } from '@/components/site-header';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { useSettingContext } from '@/components/website-setting-provider';
-import { cn } from '@/lib/utils';
-import { ReactNode, useState } from 'react';
+// 缓存站点设置查询以提高性能
+const cachedGetSettings = cache(getPublicSiteSettings);
 
-export default function Layout ({ children }: {
+export default async function Layout({ children }: {
   children: ReactNode
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const setting = useSettingContext();
-
+  // 在服务器端获取设置
+  const setting = await cachedGetSettings();
+  
+  // 使用客户端组件包装内容
   return (
-    <>
-      <SiteHeaderSmallScreen setting={setting} />
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <div className={cn('hidden md:block absolute pl-2.5 top-2.5 md:top-5 md:pl-5 z-10 transition-all ease-linear', sidebarOpen ? 'left-[--sidebar-width]' : 'left-0')}>
-          <SidebarTrigger />
-        </div>
-        <SiteHeaderLargeScreen setting={setting} />
-        <SiteSidebar setting={setting} />
-        <main className="flex-1 overflow-x-hidden">
-          {children}
-        </main>
-      </SidebarProvider>
-    </>
+    <MainLayoutClient setting={setting}>
+      {children}
+    </MainLayoutClient>
   );
 }
