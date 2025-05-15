@@ -36,6 +36,13 @@ class ChatEventType(int, enum.Enum):
     DATA_PART = 2
     ERROR_PART = 3
     MESSAGE_ANNOTATIONS_PART = 8
+    
+    # 工具调用相关事件类型
+    TOOL_START_PART = 10    # 工具调用开始
+    TOOL_THINKING_PART = 11  # 工具选择思考过程
+    TOOL_CALL_PART = 12      # 工具调用
+    TOOL_RESULT_PART = 13    # 工具调用结果
+    AGENT_THINKING_PART = 14 # Agent思考过程
 
 
 class ChatMessageSate(int, enum.Enum):

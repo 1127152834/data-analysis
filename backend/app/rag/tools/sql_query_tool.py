@@ -13,7 +13,6 @@ from llama_index.core.schema import Document, NodeWithScore
 from llama_index.core.tools.types import BaseTool
 from llama_index.core.llms.llm import LLM
 from llama_index.core.query_engine import NLSQLTableQueryEngine, RouterQueryEngine
-from llama_index.core.schema import SQLSourceNode
 from llama_index.core import SQLDatabase
 from sqlalchemy import create_engine, MetaData, Table, inspect
 from llama_index.core.selectors import LLMSingleSelector

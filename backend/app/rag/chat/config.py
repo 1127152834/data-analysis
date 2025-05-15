@@ -398,6 +398,65 @@ class DatabaseOption(BaseModel):
     enhanced_permission_check: bool = False
 
 
+# 添加Agent模式配置类
+class AgentOption(BaseModel):
+    """
+    Agent选项配置类
+    
+    管理聊天引擎使用的Agent设置
+    """
+    # 是否启用Agent模式
+    enabled: bool = False
+    
+    # Agent模式使用的工具列表，可以是预定义的工具名称
+    enabled_tools: List[str] = Field(
+        default_factory=lambda: [
+            "knowledge_retrieval",
+            "knowledge_graph_query",
+            "response_generator",
+            "deep_research",
+            "sql_query"
+        ]
+    )
+    
+    # 是否允许深度研究
+    allow_deep_research: bool = True
+    
+    # 是否使用思考轨迹可视化
+    show_thinking: bool = True
+    
+    # 思考链最大长度限制
+    max_thinking_steps: int = 10
+    
+    # 最大工具调用次数
+    max_tool_calls: int = 5
+    
+    # Agent超时时间（秒）
+    timeout_seconds: int = 60
+    
+    # 是否启用流式响应
+    streaming: bool = True
+    
+    # Agent系统提示词
+    system_prompt: str = """你是AutoFlow，一个智能的知识库助手。
+你的任务是理解用户问题并使用提供的工具来回答问题。
+你有以下工具可用：
+1. knowledge_retrieval - 从知识库中检索相关内容
+2. knowledge_graph_query - 从知识图谱中查询实体和关系
+3. response_generator - 基于检索的内容生成回答
+4. deep_research - 对复杂问题进行深入研究
+5. sql_query - 通过SQL查询数据库获取信息
+
+为了给用户提供最好的回答，请遵循以下流程：
+1. 首先分析用户问题，理解用户意图
+2. 使用knowledge_retrieval和knowledge_graph_query工具获取相关信息
+3. 如果问题涉及数据库查询，使用sql_query工具
+4. 使用response_generator基于检索到的信息生成回答
+5. 如果是复杂问题，可以使用deep_research深入分析
+
+请确保你的回答准确、全面、有条理。如果你不知道答案，请诚实地说明。"""
+
+
 class ChatEngineConfig(BaseModel):
     """
     聊天引擎主配置类
@@ -409,6 +468,9 @@ class ChatEngineConfig(BaseModel):
 
     # 语言模型相关的配置
     llm: LLMOption = LLMOption()
+
+    # Agent相关配置
+    agent: AgentOption = AgentOption()
 
     # 知识库相关的配置
     knowledge_base: KnowledgeBaseOption = KnowledgeBaseOption()

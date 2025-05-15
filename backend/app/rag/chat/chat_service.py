@@ -46,6 +46,10 @@ from app.repositories.embedding_model import embedding_model_repo
 from app.repositories.llm import llm_repo
 from app.site_settings import SiteSetting
 from llama_index.core.prompts.rich import RichPromptTemplate
+from llama_index.core.base.llms.types import ChatMessage
+
+# 导入Agent相关类
+from app.rag.agent.autoflow_agent import AutoFlowAgent
 
 logger = logging.getLogger(__name__)
 
@@ -399,3 +403,151 @@ def get_chat_message_recommend_questions(
     db_session.commit()
 
     return recommend_question_list
+
+# Agent模式相关函数
+
+def create_agent_chat_flow(
+    db_session: Session,
+    user: Optional[User],
+    browser_id: str,
+    origin: str,
+    chat_messages: List[ChatMessage],
+    engine_name: str = "default",
+    chat_id: Optional[UUID] = None,
+) -> AutoFlowAgent:
+    """
+    创建Agent聊天流
+    
+    参数:
+        db_session: 数据库会话
+        user: 用户对象
+        browser_id: 浏览器ID
+        origin: 请求来源
+        chat_messages: 聊天消息列表
+        engine_name: 引擎名称，默认为"default"
+        chat_id: 聊天ID，可选
+        
+    返回:
+        AutoFlowAgent: 初始化好的Agent对象
+    """
+    return AutoFlowAgent(
+        db_session=db_session,
+        user=user,
+        browser_id=browser_id,
+        origin=origin,
+        chat_messages=chat_messages,
+        engine_name=engine_name,
+        chat_id=chat_id,
+    )
+
+def is_agent_mode_enabled(engine_config: ChatEngineConfig) -> bool:
+    """
+    检查是否启用了Agent模式
+    
+    参数:
+        engine_config: 聊天引擎配置
+        
+    返回:
+        bool: 是否启用Agent模式
+    """
+    # 从配置中读取是否启用Agent模式
+    return engine_config.agent.enabled
+
+def chat_with_agent(
+    db_session: Session,
+    user: Optional[User],
+    browser_id: str,
+    origin: str,
+    chat_messages: List[ChatMessage],
+    engine_name: str = "default",
+    chat_id: Optional[UUID] = None,
+) -> Generator[ChatEvent, None, None]:
+    """
+    使用Agent进行聊天
+    
+    参数:
+        db_session: 数据库会话
+        user: 用户对象
+        browser_id: 浏览器ID
+        origin: 请求来源
+        chat_messages: 聊天消息列表
+        engine_name: 引擎名称，默认为"default"
+        chat_id: 聊天ID，可选
+        
+    返回:
+        Generator[ChatEvent, None, None]: 聊天事件生成器
+    """
+    # 创建AutoFlowAgent实例
+    agent = create_agent_chat_flow(
+        db_session=db_session,
+        user=user,
+        browser_id=browser_id,
+        origin=origin,
+        chat_messages=chat_messages,
+        engine_name=engine_name,
+        chat_id=chat_id,
+    )
+    
+    # 使用Agent进行聊天
+    for event in agent.chat():
+        yield event
+
+# 添加新函数，用于处理聊天请求，根据配置决定使用原有流程或Agent模式
+def chat(
+    db_session: Session,
+    user: Optional[User],
+    browser_id: str,
+    origin: str,
+    chat_messages: List[ChatMessage],
+    engine_name: str = "default",
+    chat_id: Optional[UUID] = None,
+) -> Generator[ChatEvent, None, None]:
+    """
+    处理聊天请求，根据配置决定使用原有流程或Agent模式
+    
+    参数:
+        db_session: 数据库会话
+        user: 用户对象
+        browser_id: 浏览器ID
+        origin: 请求来源
+        chat_messages: 聊天消息列表
+        engine_name: 引擎名称，默认为"default"
+        chat_id: 聊天ID，可选
+        
+    返回:
+        Generator[ChatEvent, None, None]: 聊天事件生成器
+    """
+    # 加载引擎配置
+    engine_config = ChatEngineConfig.load_from_db(db_session, engine_name)
+    
+    # 检查是否使用Agent模式
+    if is_agent_mode_enabled(engine_config):
+        logger.info(f"使用Agent模式进行聊天 (engine: {engine_name})")
+        # 使用Agent模式
+        for event in chat_with_agent(
+            db_session=db_session,
+            user=user,
+            browser_id=browser_id,
+            origin=origin,
+            chat_messages=chat_messages,
+            engine_name=engine_name,
+            chat_id=chat_id,
+        ):
+            yield event
+    else:
+        logger.info(f"使用传统模式进行聊天 (engine: {engine_name})")
+        # 使用原有流程
+        from app.rag.chat.chat_flow import ChatFlow
+        
+        chat_flow = ChatFlow(
+            db_session=db_session,
+            user=user,
+            browser_id=browser_id,
+            origin=origin,
+            chat_messages=chat_messages,
+            engine_name=engine_name,
+            chat_id=chat_id,
+        )
+        
+        for event in chat_flow.chat():
+            yield event
