@@ -34,7 +34,12 @@ dictConfig(
                 "propagate": False,  # 不传播到父级记录器
             },
             "uvicorn.access": {
-                "level": "INFO",  # uvicorn访问日志级别
+                "level": "WARNING",  # 修改uvicorn访问日志级别为WARNING，减少API请求日志
+                "handlers": ["console"],
+                "propagate": False,
+            },
+            "httpx": {
+                "level": "WARNING",  # 添加httpx日志级别为WARNING，减少HTTP请求日志
                 "handlers": ["console"],
                 "propagate": False,
             },

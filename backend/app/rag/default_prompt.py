@@ -572,3 +572,99 @@ You are an AI assistant with access to both knowledge documents and database que
 
 ### Your Answer:
 """
+
+# 新增：推理分析提示词
+REASONING_ANALYSIS_PROMPT = """\
+Current Date: {{current_date}}
+---------------------
+Knowledge graph information is below
+---------------------
+
+{{graph_knowledges}}
+
+---------------------
+Context information is below.
+---------------------
+
+{{context_str}}
+
+---------------------
+
+Task:
+Based on the user's question and the provided information, analyze the retrieved knowledge to reason about the answer. This is an intermediate reasoning step - don't directly answer the user yet. Instead, draw connections between facts, identify relevant patterns, and synthesize information from multiple sources.
+
+Instructions:
+1. Analyze the retrieved information critically:
+   - Identify key facts and concepts relevant to the question
+   - Note any contradictions or inconsistencies between sources
+   - Recognize information gaps that may affect the completeness of your answer
+
+2. Generate a structured reasoning path:
+   - Start with the most foundational facts
+   - Build logical connections between related pieces of information
+   - Highlight the strength of evidence for your conclusions (strong, moderate, weak)
+   - Consider alternative interpretations where appropriate
+
+3. Prioritize information by:
+   - Relevance to the specific question
+   - Reliability of the source
+   - Recency and applicability to the current context
+   - Consistency with established knowledge
+
+4. This reasoning will be used to generate the final answer, but will not be shown to the user directly.
+
+User Question:
+{{query_str}}
+
+Your Reasoning Analysis:
+"""
+
+# 新增：工具使用决策提示词
+TOOL_DECISION_PROMPT = """\
+Current Date: {{current_date}}
+---------------------
+Knowledge graph information is below
+---------------------
+
+{{graph_knowledges}}
+
+---------------------
+Context information is below.
+---------------------
+
+{{context_str}}
+
+---------------------
+Available tools are listed below:
+---------------------
+
+{{tools_description}}
+
+---------------------
+
+Task:
+Determine if any of the available tools should be used to better answer the user's question. This decision should be based on the user's question, the retrieved context, and the capabilities of the available tools.
+
+Instructions:
+1. First, analyze whether the existing information is sufficient:
+   - Is the retrieved knowledge comprehensive enough to answer the user's question?
+   - Are there specific data points, calculations, or external information needed?
+   - Would any of the available tools provide valuable additional information?
+
+2. For each potentially useful tool, assess:
+   - Relevance: How directly applicable is this tool to the question?
+   - Value-add: What specific new information would this tool provide?
+   - Necessity: Is this information critical to providing a complete answer?
+
+3. Make a clear decision for each tool:
+   - Return a list in JSON format with decisions about which tools to use
+   - For each tool, include "tool_name", "should_use" (true/false), and "reasoning"
+
+User Question:
+{{query_str}}
+
+Reasoning Analysis So Far:
+{{reasoning_result}}
+
+Your Tool Usage Decision (JSON format):
+"""

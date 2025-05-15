@@ -51,7 +51,12 @@ dictConfig(
                 "propagate": False,
             },
             "uvicorn.access": {
-                "level": "INFO",
+                "level": "WARNING",
+                "handlers": ["console"],
+                "propagate": False,
+            },
+            "httpx": {
+                "level": "ERROR",
                 "handlers": ["console"],
                 "propagate": False,
             },
@@ -144,8 +149,9 @@ def runserver(host, port, workers):
         host=host,
         port=port,
         reload=True,
-        log_level="debug",
+        log_level="info",
         workers=workers,
+        access_log=False,
     )
 
 

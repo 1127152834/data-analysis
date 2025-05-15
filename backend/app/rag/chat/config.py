@@ -41,6 +41,8 @@ from app.rag.default_prompt import (
     DEFAULT_RESPONSE_SYNTHESIS_PROMPT,
     DATABASE_AWARE_CONDENSE_QUESTION_PROMPT,
     HYBRID_RESPONSE_SYNTHESIS_PROMPT,
+    REASONING_ANALYSIS_PROMPT,
+    TOOL_DECISION_PROMPT,
 )
 
 from llama_index.core.tools import ToolMetadata
@@ -112,6 +114,12 @@ class LLMOption(BaseModel):
     
     # 混合内容（知识库+数据库结果）的回答生成提示词模板
     hybrid_response_synthesis_prompt: str = HYBRID_RESPONSE_SYNTHESIS_PROMPT
+    
+    # 用于推理分析的提示词模板
+    reasoning_analysis_prompt: str = REASONING_ANALYSIS_PROMPT
+    
+    # 用于工具使用决策的提示词模板
+    tool_decision_prompt: str = TOOL_DECISION_PROMPT
 
 
 class VectorSearchOption(VectorSearchRetrieverConfig):
@@ -410,13 +418,7 @@ class AgentOption(BaseModel):
     
     # Agent模式使用的工具列表，可以是预定义的工具名称
     enabled_tools: List[str] = Field(
-        default_factory=lambda: [
-            "knowledge_retrieval",
-            "knowledge_graph_query",
-            "response_generator",
-            "deep_research",
-            "sql_query"
-        ]
+        default_factory=lambda: []
     )
     
     # 是否允许深度研究
@@ -495,6 +497,9 @@ class ChatEngineConfig(BaseModel):
     
     # 是否生成后续问题建议
     further_questions: bool = False
+    
+    # 是否启用流式输出
+    streaming_enabled: bool = True
 
     # 回答验证的API地址（可选）
     post_verification_url: Optional[str] = None
