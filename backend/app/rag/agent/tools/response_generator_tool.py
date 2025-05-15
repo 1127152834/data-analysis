@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Generator
 
 from llama_index.core.schema import NodeWithScore
-from llama_index.core.tools.types import BaseTool, ToolMetadata
+from llama_index.core.tools.types import BaseTool, ToolMetadata, ToolOutput
 from llama_index.core import get_response_synthesizer
 from llama_index.core.prompts.rich import RichPromptTemplate
 from sqlmodel import Session
@@ -107,24 +107,24 @@ class ResponseGeneratorTool(BaseTool):
     
     def __call__(
         self, 
-        query_str: str, 
+        user_question: str, 
         context_data: List[Dict], 
         knowledge_graph_context: str = "",
         stream: bool = False
-    ) -> Dict:
+    ) -> ToolOutput:
         """
         根据上下文生成回答
         
         参数:
-            query_str: 用户查询
+            user_question: 用户查询
             context_data: 上下文数据（检索结果）
             knowledge_graph_context: 知识图谱上下文
             stream: 是否流式生成
             
         返回:
-            Dict: 生成的回答及相关信息
+            ToolOutput: 生成的回答及相关信息的工具输出对象
         """
-        logger.info(f"生成问题 '{query_str}' 的回答")
+        logger.info(f"生成问题 '{user_question}' 的回答")
         try:
             # 将上下文转换为节点
             nodes = self._prepare_nodes(context_data)
@@ -137,7 +137,7 @@ class ResponseGeneratorTool(BaseTool):
             text_qa_template = text_qa_template.partial_format(
                 current_date=datetime.now().strftime("%Y-%m-%d"),  # 当前日期
                 graph_knowledges=knowledge_graph_context,  # 知识图谱上下文
-                original_question=query_str,  # 原始问题
+                original_question=user_question,  # 原始问题
             )
             
             # 获取响应合成器
@@ -149,12 +149,20 @@ class ResponseGeneratorTool(BaseTool):
 
             # 使用响应合成器生成回答
             response = response_synthesizer.synthesize(
-                query=query_str,  # 查询
+                query=user_question,  # 查询
                 nodes=nodes,  # 相关文档块
             )
             
             # 获取源文档
             source_documents = self._get_source_documents(nodes)
+            
+            # 记录用户输入
+            input_params = {
+                "user_question": user_question,
+                "context_data": context_data,
+                "knowledge_graph_context": knowledge_graph_context,
+                "stream": stream
+            }
             
             # 如果是流式响应，返回生成器
             if stream and hasattr(response, "get_response_gen"):
@@ -162,26 +170,58 @@ class ResponseGeneratorTool(BaseTool):
                 response_text = ""
                 response_gen = response.get_response_gen()
                 
-                # 返回结果
-                return {
+                # 构建结果
+                result = {
                     "response_text": response.response,
                     "source_documents": [doc.metadata for doc in source_documents],
                     "response_gen": response_gen,  # 注意：这个生成器需要在agent层面特殊处理
                     "success": True
                 }
+                
+                # 返回ToolOutput对象
+                return ToolOutput(
+                    content=response.response,
+                    tool_name=self.metadata.name,
+                    raw_output=result,
+                    raw_input=input_params
+                )
             
-            # 返回结果
-            return {
+            # 构建正常结果
+            result = {
                 "response_text": response.response,
                 "source_documents": [doc.metadata for doc in source_documents],
                 "success": True
             }
             
+            # 返回ToolOutput对象
+            return ToolOutput(
+                content=response.response,
+                tool_name=self.metadata.name,
+                raw_output=result,
+                raw_input=input_params
+            )
+            
         except Exception as e:
             logger.error(f"生成回答失败: {str(e)}")
-            return {
+            error_result = {
                 "response_text": f"生成回答时出错: {str(e)}",
                 "source_documents": [],
                 "error": str(e),
                 "success": False
-            } 
+            }
+            
+            # 记录用户输入
+            input_params = {
+                "user_question": user_question,
+                "context_data": context_data,
+                "knowledge_graph_context": knowledge_graph_context,
+                "stream": stream
+            }
+            
+            # 错误情况也返回ToolOutput对象
+            return ToolOutput(
+                content=f"生成回答时出错: {str(e)}",
+                tool_name=self.metadata.name,
+                raw_output=error_result,
+                raw_input=input_params
+            ) 

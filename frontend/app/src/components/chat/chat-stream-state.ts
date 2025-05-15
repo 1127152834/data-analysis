@@ -28,6 +28,9 @@ export const enum AppChatStreamState {
   FINISHED = 'FINISHED',
   FAILED = 'FAILED',
   UNKNOWN = 'UNKNOWN',
+  // 工具事件状态
+  TOOL_CALL = 'TOOL_CALL',           // 工具调用
+  TOOL_RESULT = 'TOOL_RESULT',       // 工具调用结果
 }
 
 export type StackVMState = {

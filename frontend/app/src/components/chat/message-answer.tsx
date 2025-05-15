@@ -3,6 +3,8 @@ import type { ChatMessageController } from '@/components/chat/chat-message-contr
 import { AppChatStreamState } from '@/components/chat/chat-stream-state';
 import { MessageBetaAlert } from '@/components/chat/message-beta-alert';
 import { MessageContent } from '@/components/chat/message-content';
+import { StackVMMessageAnnotationHistory } from '@/components/chat/message-annotation-history-stackvm';
+import { StackVMChatMessageController } from '@/components/chat/chat-message-controller';
 import { DatabaseIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +13,7 @@ export function MessageAnswer ({ message, showBetaAlert }: { message: ChatMessag
   const shouldShow = useChatMessageStreamContainsState(message, AppChatStreamState.GENERATE_ANSWER);
   const dbQuery = useChatMessageField(message, 'database_query');
   const hasDatabaseQuery = !!dbQuery;
+  const isStackVMController = message?.version === 'StackVM';
 
   if (!shouldShow && !content?.length) {
     return null;
@@ -42,6 +45,12 @@ export function MessageAnswer ({ message, showBetaAlert }: { message: ChatMessag
       </div>
       {showBetaAlert && <MessageBetaAlert />}
       <MessageContent message={message} />
+      
+      {isStackVMController && (
+        <div className="mt-4">
+          <StackVMMessageAnnotationHistory message={message as StackVMChatMessageController} />
+        </div>
+      )}
     </>
   );
 }

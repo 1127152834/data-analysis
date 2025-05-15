@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool, ToolMetadata
+from llama_index.core.tools.types import BaseTool, ToolMetadata, ToolOutput
 from llama_index.core.llms.llm import LLM
 from sqlmodel import Session
 
@@ -73,7 +73,7 @@ class DeepResearchTool(BaseTool):
         """返回工具的元数据信息"""
         return self._metadata
     
-    def __call__(self, query_str: str, initial_findings: str) -> Dict:
+    def __call__(self, query_str: str, initial_findings: str) -> ToolOutput:
         """
         对问题进行深度研究
         
@@ -82,7 +82,7 @@ class DeepResearchTool(BaseTool):
             initial_findings: 初步发现/回答
             
         返回:
-            Dict: 包含深度研究结果的字典
+            ToolOutput: 包含深度研究结果的工具输出对象
         """
         logger.info(f"执行深度研究: {query_str}")
         try:
@@ -95,19 +95,47 @@ class DeepResearchTool(BaseTool):
             # 使用LLM生成深度研究结果
             response = self.llm.complete(prompt)
             
-            # 返回结果
-            return {
+            # 构建结果
+            result = {
                 "deep_research_result": response.text,
                 "original_question": query_str,
                 "initial_findings": initial_findings,
                 "success": True
             }
+            
+            # 记录用户输入
+            input_params = {
+                "query_str": query_str,
+                "initial_findings": initial_findings
+            }
+            
+            # 返回ToolOutput对象
+            return ToolOutput(
+                content=response.text,
+                tool_name=self.metadata.name,
+                raw_output=result,
+                raw_input=input_params
+            )
         except Exception as e:
             logger.error(f"深度研究失败: {str(e)}")
-            return {
+            error_result = {
                 "deep_research_result": f"深度研究时出错: {str(e)}",
                 "original_question": query_str,
                 "initial_findings": initial_findings,
                 "error": str(e),
                 "success": False
-            } 
+            }
+            
+            # 记录用户输入
+            input_params = {
+                "query_str": query_str,
+                "initial_findings": initial_findings
+            }
+            
+            # 错误情况也返回ToolOutput对象
+            return ToolOutput(
+                content=f"深度研究时出错: {str(e)}",
+                tool_name=self.metadata.name,
+                raw_output=error_result,
+                raw_input=input_params
+            ) 

@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool, ToolMetadata
+from llama_index.core.tools.types import BaseTool, ToolMetadata, ToolOutput
 from sqlmodel import Session
 
 from app.rag.retrievers.knowledge_graph.schema import KnowledgeGraphRetriever, KnowledgeGraphRetrievalResult
@@ -79,32 +79,58 @@ class KnowledgeGraphQueryTool(BaseTool):
             "entities": [e.model_dump() for e in kg_result.entities],
         }
     
-    def __call__(self, query_str: str) -> Dict:
+    def __call__(self, input: str) -> ToolOutput:
         """
         根据查询检索知识图谱中的相关信息
         
         参数:
-            query_str: 用户查询文本
+            input: 用户查询文本
             
         返回:
-            Dict: 包含检索结果的字典
+            ToolOutput: 包含检索结果的工具输出对象
         """
-        logger.info(f"执行知识图谱查询: {query_str}")
+        logger.info(f"执行知识图谱查询: {input}")
         try:
             # TODO: 实现知识图谱查询逻辑
             # 暂时返回空结果
-            return {
+            result = {
                 "triples": [],
                 "entities": [],
                 "count": 0,
                 "success": True
             }
+            
+            # 记录用户输入
+            input_params = {
+                "input": input
+            }
+            
+            # 返回ToolOutput对象
+            return ToolOutput(
+                content=str(result),
+                tool_name=self.metadata.name,
+                raw_output=result,
+                raw_input=input_params
+            )
         except Exception as e:
             logger.error(f"知识图谱查询失败: {str(e)}")
-            return {
+            error_result = {
                 "triples": [],
                 "entities": [],
                 "count": 0,
                 "error": str(e),
                 "success": False
-            } 
+            }
+            
+            # 记录用户输入
+            input_params = {
+                "input": input
+            }
+            
+            # 错误情况也返回ToolOutput对象
+            return ToolOutput(
+                content=str(error_result),
+                tool_name=self.metadata.name,
+                raw_output=error_result,
+                raw_input=input_params
+            ) 

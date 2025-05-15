@@ -8,11 +8,11 @@ import logging
 import uuid
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool, ToolMetadata
+from llama_index.core.tools.types import BaseTool, ToolMetadata, ToolOutput
 from sqlmodel import Session
 
 from app.rag.chat.config import ChatEngineConfig
-from app.rag.tools.sql_query_tool import SQLQueryTool
+from app.rag.agent.tools.sql_query_tool import SQLQueryTool
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class SQLQueryToolAdapter(BaseTool):
             "success": True
         }
     
-    def __call__(self, input_text: str, page: int = 1, page_size: int = 100, format_type: str = "markdown") -> Dict:
+    def __call__(self, input_text: str, page: int = 1, page_size: int = 100, format_type: str = "markdown") -> ToolOutput:
         """
         执行SQL查询
         
@@ -103,7 +103,7 @@ class SQLQueryToolAdapter(BaseTool):
             format_type: 输出格式类型
             
         返回:
-            Dict: SQL查询结果
+            ToolOutput: SQL查询结果的工具输出对象
         """
         logger.info(f"执行SQL查询: {input_text}")
         try:
@@ -118,13 +118,43 @@ class SQLQueryToolAdapter(BaseTool):
             # 格式化结果
             formatted_result = self._format_sql_result(result)
             
-            return formatted_result
+            # 记录用户输入
+            input_params = {
+                "input_text": input_text,
+                "page": page,
+                "page_size": page_size,
+                "format_type": format_type
+            }
+            
+            # 返回ToolOutput对象
+            return ToolOutput(
+                content=str(formatted_result.get("result", "")),
+                tool_name=self.metadata.name,
+                raw_output=formatted_result,
+                raw_input=input_params
+            )
         except Exception as e:
             logger.error(f"SQL查询失败: {str(e)}")
-            return {
+            error_result = {
                 "result": f"SQL查询时出错: {str(e)}",
                 "format": "text",
                 "error": str(e),
                 "query_id": str(uuid.uuid4()),
                 "success": False
             }
+            
+            # 记录用户输入
+            input_params = {
+                "input_text": input_text,
+                "page": page,
+                "page_size": page_size,
+                "format_type": format_type
+            }
+            
+            # 错误情况也返回ToolOutput对象
+            return ToolOutput(
+                content=f"SQL查询时出错: {str(e)}",
+                tool_name=self.metadata.name,
+                raw_output=error_result,
+                raw_input=input_params
+            )

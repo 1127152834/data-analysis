@@ -8,7 +8,7 @@ import logging
 from typing import Dict, List, Optional, Any
 
 from llama_index.core.schema import NodeWithScore
-from llama_index.core.tools.types import BaseTool, ToolMetadata
+from llama_index.core.tools.types import BaseTool, ToolMetadata, ToolOutput
 from sqlmodel import Session
 
 from app.rag.chat.retrieve.retrieve_flow import RetrieveFlow
@@ -77,18 +77,18 @@ class KnowledgeRetrievalTool(BaseTool):
             "id": node.node.id_
         }
     
-    def __call__(self, query_str: str, top_k: int = 5) -> Dict:
+    def __call__(self, user_question: str, top_k: int = 5) -> ToolOutput:
         """
         根据查询检索相关文档
         
         参数:
-            query_str: 用户查询文本
+            user_question: 用户查询文本
             top_k: 返回的最大结果数
             
         返回:
-            Dict: 包含检索结果和元数据的字典
+            ToolOutput: 包含检索结果和元数据的工具输出对象
         """
-        logger.info(f"执行知识检索: {query_str}")
+        logger.info(f"执行知识检索: {user_question}")
         try:
             # 执行检索
             rerank = False
@@ -96,9 +96,7 @@ class KnowledgeRetrievalTool(BaseTool):
                 rerank = self.engine_config.vector_search.reranker.enabled
             
             retrieval_results = self.retrieve_flow.retrieve(
-                query_str=query_str,
-                top_k=top_k,
-                rerank=rerank,
+                user_question=user_question
             )
             
             # 转换结果为前端友好格式
@@ -108,12 +106,39 @@ class KnowledgeRetrievalTool(BaseTool):
                 "knowledge_bases": [kb.name for kb in self.knowledge_bases],
                 "success": True
             }
-            return result
+            
+            # 记录用户输入
+            input_params = {
+                "user_question": user_question,
+                "top_k": top_k
+            }
+            
+            # 返回ToolOutput对象
+            return ToolOutput(
+                content=str(result),
+                tool_name=self.metadata.name,
+                raw_output=result,
+                raw_input=input_params
+            )
         except Exception as e:
             logger.error(f"知识检索失败: {str(e)}")
-            return {
+            error_result = {
                 "nodes": [],
                 "count": 0,
                 "error": str(e),
                 "success": False
-            } 
+            }
+            
+            # 记录用户输入
+            input_params = {
+                "user_question": user_question,
+                "top_k": top_k
+            }
+            
+            # 错误情况也返回ToolOutput对象
+            return ToolOutput(
+                content=str(error_result),
+                tool_name=self.metadata.name,
+                raw_output=error_result,
+                raw_input=input_params
+            ) 

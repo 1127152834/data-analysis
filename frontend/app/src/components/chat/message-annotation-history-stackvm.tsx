@@ -195,7 +195,7 @@ function ToolCallInfo ({ vars, step, pc, toolCalls }: { step: StackVM.model.Step
       <span>)</span>
       {result != null && <>
         <div className="flex items-center gap-2">
-          <b>Result:</b>
+          <b>结果:</b>
           <span>{'{'}</span>
         </div>
         <ul className="space-y-1 block">

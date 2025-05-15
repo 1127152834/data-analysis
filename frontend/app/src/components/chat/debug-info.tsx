@@ -45,11 +45,11 @@ export function DebugInfo ({ group }: DebugInfoProps) {
         <section className="space-y-2">
           <div className="space-y-2 text-sm">
             <div className="space-y-2 text-sm">
-              <OptionDetail title="Origin" value={chat.origin} />
-              <OptionDetail title="Chat Created At" value={<DateFormat date={chat.created_at} />} />
-              <OptionDetail title="Message Created At" value={<DateFormat date={createdAt} />} />
-              <OptionDetail title="Message Finished In" value={(createdAt && finishedAt) && `${differenceInSeconds(finishedAt, createdAt)} seconds`} />
-              <OptionDetail title="Chat Engine" value={chat.engine_id} />
+              <OptionDetail title="知识来源" value={chat.origin} />
+              <OptionDetail title="创建时间" value={<DateFormat date={chat.created_at} />} />
+              <OptionDetail title="修改时间" value={<DateFormat date={createdAt} />} />
+              <OptionDetail title="构建时常" value={(createdAt && finishedAt) && `${differenceInSeconds(finishedAt, createdAt)} seconds`} />
+              <OptionDetail title="聊天引擎" value={chat.engine_id} />
             </div>
           </div>
         </section>
