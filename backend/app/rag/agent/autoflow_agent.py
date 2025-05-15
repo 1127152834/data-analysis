@@ -141,9 +141,17 @@ class AutoFlowAgent:
         self, event_type: ToolEventType, data: Any
     ) -> ChatEvent:
         """创建工具相关的事件"""
+        # 创建一个ChatStreamMessagePayload对象来包装数据
+        # 使用一个固定状态，但将数据放在message字段中
+        payload = ChatStreamMessagePayload(
+            state=ChatMessageSate.TRACE,  # 使用TRACE状态表示工具事件
+            message=json.dumps(data) if not isinstance(data, str) else data,  # 确保消息是字符串
+            context=data  # 在context中保留原始数据结构
+        )
+        
         return ChatEvent(
             event_type=ChatEventType(event_type.value), 
-            payload=json.dumps(data)
+            payload=payload
         )
     
     def _create_message_event(
@@ -173,87 +181,60 @@ class AutoFlowAgent:
                 {"message": "分析问题中...", "query": self.user_question}
             )
             
-            # 准备chat_history供agent使用
-            chat_messages = []
-            for msg in self.chat_history:
-                chat_messages.append(
-                    ChatMessage(
-                        role=msg.role,
-                        content=msg.content
-                    )
-                )
+            # self.user_question 是当前用户消息 (str)
+            # self.chat_history 是 List[ChatMessage] 历史记录
+            # ReActAgent.chat() 期望 message: str 和可选的 chat_history: List[ChatMessage]
             
-            # 将当前用户问题添加到messages中
-            chat_messages.append(
-                ChatMessage(
-                    role=MessageRole.USER,
-                    content=self.user_question
-                )
-            )
+            logger.info(f"Calling agent.chat with user_question: '{self.user_question}' and chat_history of length {len(self.chat_history) if self.chat_history else 0}")
+            response = self.agent.chat(message=self.user_question, chat_history=self.chat_history)
             
-            # 使用同步方式执行agent
-            # 这里可以改为异步方式，但需要处理streaming response
-            response = self.agent.chat(chat_messages)
-            
-            # 获取agent思考过程
-            for step in self.agent.get_steps():
-                # 记录工具选择过程
-                yield self._create_tool_event(
-                    ToolEventType.TOOL_THINKING,
-                    {
-                        "step": step.get("step", ""),
-                        "thought": step.get("thought", ""),
-                        "observation": step.get("observation", ""),
-                    }
-                )
-                
-                # 如果有工具调用，记录工具调用信息
-                tool_call = step.get("action")
-                if tool_call:
-                    tool_name = tool_call.get("tool", "")
-                    tool_input = tool_call.get("tool_input", {})
-                    
-                    # 记录工具调用
-                    yield self._create_tool_event(
-                        ToolEventType.TOOL_CALL,
-                        {
-                            "tool": tool_name,
-                            "input": tool_input,
-                            "step_id": str(step.get("step", ""))
-                        }
-                    )
-                    
+            # 获取agent思考过程 - response.sources 包含工具输出信息
+            # 详细的思考步骤（Thought, Action, Observation）目前依赖 verbose=True 输出到日志
+            # 后续可以考虑使用 CallbackManager 捕获更细致的步骤
+
+            if response and hasattr(response, 'sources') and response.sources:
+                for tool_output in response.sources:
                     # 记录工具调用结果
                     yield self._create_tool_event(
                         ToolEventType.TOOL_RESULT,
                         {
-                            "tool": tool_name,
-                            "result": step.get("observation", ""),
-                            "step_id": str(step.get("step", ""))
+                            "tool": tool_output.tool_name,
+                            "input": tool_output.raw_input.get("args", {}) if tool_output.raw_input else {},
+                            "result": tool_output.content,
                         }
                     )
             
             # 返回最终回答
+            # response.response 是最终的文本回答
+            # response.message 是 ChatMessage 类型，也包含最终回答
+            final_answer = ""
+            if response:
+                if hasattr(response, 'response'):
+                    final_answer = response.response
+                elif hasattr(response, 'message') and hasattr(response.message, 'content'):
+                    final_answer = response.message.content
+
             yield self._create_message_event(
-                response.message.content,
+                final_answer if final_answer else "未能生成回答。",
                 ChatMessageSate.GENERATE_ANSWER
             )
             
-            # 如果有source nodes信息，添加到响应中
-            source_nodes = getattr(response, "source_nodes", [])
-            if source_nodes:
-                yield ChatEvent(
-                    event_type=ChatEventType.DATA_PART,
-                    payload=json.dumps({"sources": source_nodes})
-                )
+            # 如果有source nodes信息（通常由 RetrieverTool 直接返回，Agent 的 sources 更通用）
+            # AgentChatResponse 的 sources 已经是 ToolOutput，我们上面处理过了
+            # 如果需要更底层的 NodeWithScore，可能需要工具内部返回并传递
             
             # 结束
             yield self._create_message_event("处理完成", ChatMessageSate.FINISHED)
             
         except Exception as e:
-            logger.error(f"Agent执行失败: {str(e)}")
+            logger.error(f"Agent执行失败: {str(e)}", exc_info=True)
             # 返回错误信息
+            # 确保错误事件的payload也是一个结构化的JSON字符串
+            error_payload = ChatStreamMessagePayload(
+                state=ChatMessageSate.ERROR,
+                message=f"处理问题时出错: {str(e)}"
+            )
             yield ChatEvent(
                 event_type=ChatEventType.ERROR_PART,
-                payload=f"处理问题时出错: {str(e)}"
+                payload=error_payload # ChatEvent 会自动处理序列化
             )

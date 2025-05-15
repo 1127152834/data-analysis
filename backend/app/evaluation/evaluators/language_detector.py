@@ -90,9 +90,9 @@ class LanguageEvaluator(BaseEvaluator):
         if query is None or response is None:
             raise ValueError("query and response must be provided")
 
-        logger.debug("prompt: %s", self._eval_template)
-        logger.debug("query: %s", query)
-        logger.debug("response: %s", response)
+        logger.info("prompt: %s", self._eval_template)
+        logger.info("query: %s", query)
+        logger.info("response: %s", response)
 
         await asyncio.sleep(sleep_time_in_seconds)
 

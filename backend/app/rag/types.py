@@ -1,5 +1,31 @@
 import enum
 
+# 事件类型到前端SSE事件名称的集中映射
+CHAT_EVENT_TYPE_TO_FRONTEND = {
+    # 核心事件类型
+    0: "text",
+    2: "data",
+    3: "error",
+    8: "message_annotations",
+    
+    # 工具调用相关事件类型
+    10: "message_annotations",  # TOOL_START_PART -> 使用message_annotations展示
+    11: "message_annotations",  # TOOL_THINKING_PART -> 使用message_annotations展示
+    12: "tool_call",            # TOOL_CALL_PART -> 直接映射到tool_call
+    13: "tool_result",          # TOOL_RESULT_PART -> 直接映射到tool_result
+    14: "message_annotations",  # AGENT_THINKING_PART -> 使用message_annotations展示
+    
+    # 确保包含所有可能用到的枚举值 
+    1: "text",            # 如果有ChatEventType值为1的情况，映射到text
+    4: "text",            # 如果有ChatEventType值为4的情况，映射到text 
+    5: "text",            # 如果有ChatEventType值为5的情况，映射到text
+    6: "text",            # 如果有ChatEventType值为6的情况，映射到text
+    7: "text",            # 如果有ChatEventType值为7的情况，映射到text
+    9: "text",            # 如果有ChatEventType值为9的情况，映射到text
+    15: "text",           # 可能的扩展枚举值
+    16: "text",           # 可能的扩展枚举值
+    # ...可根据需要扩展更多的映射
+}
 
 # Langfuse needs an enum class for event types,
 # but the CBEventType in llama-index does not have sufficient types.
@@ -36,13 +62,35 @@ class ChatEventType(int, enum.Enum):
     DATA_PART = 2
     ERROR_PART = 3
     MESSAGE_ANNOTATIONS_PART = 8
-    
+
     # 工具调用相关事件类型
     TOOL_START_PART = 10    # 工具调用开始
     TOOL_THINKING_PART = 11  # 工具选择思考过程
     TOOL_CALL_PART = 12      # 工具调用
     TOOL_RESULT_PART = 13    # 工具调用结果
     AGENT_THINKING_PART = 14 # Agent思考过程
+
+    @classmethod
+    def get_frontend_event_type(cls, event_type) -> str:
+        """获取事件类型在前端使用的名称"""
+        # 将任何类型的event_type转换为int
+        try:
+            event_type_int = int(event_type)
+        except (ValueError, TypeError):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"非法的事件类型: {event_type}，类型: {type(event_type)}，回退到'text'")
+            return "text"
+        
+        # 从映射中获取前端事件类型
+        frontend_type = CHAT_EVENT_TYPE_TO_FRONTEND.get(event_type_int)
+        if frontend_type is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"未知的事件类型: {event_type_int}，回退到'text'")
+            return "text"
+        
+        return frontend_type
 
 
 class ChatMessageSate(int, enum.Enum):
@@ -53,4 +101,5 @@ class ChatMessageSate(int, enum.Enum):
     SEARCH_RELATED_DOCUMENTS = 4
     DATABASE_QUERY = 5
     GENERATE_ANSWER = 6
+    ERROR = 7  # 添加错误状态
     FINISHED = 9

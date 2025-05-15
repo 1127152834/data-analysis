@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from sqlmodel import Session
 
 from app.rag.retrievers.knowledge_graph.schema import KnowledgeGraphRetriever, KnowledgeGraphRetrievalResult
@@ -44,8 +44,13 @@ class KnowledgeGraphQueryTool(BaseTool):
         # TODO: 实现适当的知识图谱检索器适配
         # self.kg_retriever = KnowledgeGraphRetriever实现类
         
-        name = "knowledge_graph_query"
-        super().__init__(name=name, description=description)
+        # 直接设置元数据
+        self._metadata = ToolMetadata(name="knowledge_graph_query", description=description)
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息"""
+        return self._metadata
     
     def _format_kg_result(self, kg_result: KnowledgeGraphRetrievalResult) -> Dict:
         """

@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from llama_index.core.llms.llm import LLM
 from sqlmodel import Session
 
@@ -65,8 +65,13 @@ class DeepResearchTool(BaseTool):
         self.llm = llm if llm else engine_config.get_llama_llm(db_session)
         self.prompt_template = prompt_template
         
-        name = "deep_research"
-        super().__init__(name=name, description=description)
+        # 直接设置元数据
+        self._metadata = ToolMetadata(name="deep_research", description=description)
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息"""
+        return self._metadata
     
     def __call__(self, query_str: str, initial_findings: str) -> Dict:
         """

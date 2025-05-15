@@ -8,7 +8,7 @@ import logging
 import uuid
 from typing import Dict, List, Optional, Any
 
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from sqlmodel import Session
 
 from app.rag.chat.config import ChatEngineConfig
@@ -47,8 +47,13 @@ class SQLQueryToolAdapter(BaseTool):
             llm=engine_config.get_llama_llm(db_session),
         )
         
-        name = "sql_query"
-        super().__init__(name=name, description=description)
+        # 直接设置元数据
+        self._metadata = ToolMetadata(name="sql_query", description=description)
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息"""
+        return self._metadata
     
     def _format_sql_result(self, sql_result: Dict) -> Dict:
         """

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Generator
 
 from llama_index.core.schema import NodeWithScore
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from llama_index.core import get_response_synthesizer
 from llama_index.core.prompts.rich import RichPromptTemplate
 from sqlmodel import Session
@@ -44,8 +44,13 @@ class ResponseGeneratorTool(BaseTool):
         self.engine_config = engine_config
         self.llm = engine_config.get_llama_llm(db_session)
         
-        name = "response_generator"
-        super().__init__(name=name, description=description)
+        # 直接设置元数据
+        self._metadata = ToolMetadata(name="response_generator", description=description)
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息"""
+        return self._metadata
     
     def _prepare_nodes(self, context_data: List[Dict]) -> List[NodeWithScore]:
         """

@@ -406,7 +406,7 @@ class AgentOption(BaseModel):
     管理聊天引擎使用的Agent设置
     """
     # 是否启用Agent模式
-    enabled: bool = False
+    enabled: bool = True
     
     # Agent模式使用的工具列表，可以是预定义的工具名称
     enabled_tools: List[str] = Field(
@@ -650,9 +650,14 @@ class ChatEngineConfig(BaseModel):
         返回值:
             加载的聊天引擎配置对象
         """
+        logger.info(f"========== 开始从数据库加载聊天引擎配置 ==========")
+        logger.info(f"请求的引擎名称: {engine_name}")
+        
         if not engine_name or engine_name == "default":
+            logger.info("加载默认引擎配置")
             db_chat_engine = chat_engine_repo.get_default_engine(session)
         else:
+            logger.info(f"查找名称为 {engine_name} 的引擎配置")
             db_chat_engine = chat_engine_repo.get_engine_by_name(session, engine_name)
 
         if not db_chat_engine:
@@ -661,11 +666,40 @@ class ChatEngineConfig(BaseModel):
             )
             db_chat_engine = chat_engine_repo.get_default_engine(session)
 
-        obj = cls.model_validate(db_chat_engine.engine_options)
+        logger.info(f"加载到引擎: {db_chat_engine.name}, ID: {db_chat_engine.id}")
+        
+        # 检查原始配置中的agent部分，以确保它包含必要的字段
+        engine_options = db_chat_engine.engine_options
+        agent_config = engine_options.get("agent", {})
+        logger.info(f"原始Agent配置: {agent_config}")
+        
+        # 确保agent配置中有enabled字段
+        if "enabled" not in agent_config:
+            logger.warning("引擎配置中缺少agent.enabled字段，将使用默认值True")
+            if "agent" not in engine_options:
+                engine_options["agent"] = {}
+            engine_options["agent"]["enabled"] = True
+        else:
+            # 确保enabled字段是布尔类型
+            if not isinstance(agent_config["enabled"], bool):
+                logger.warning(f"agent.enabled字段类型不正确，值为{agent_config['enabled']}，将转换为布尔值")
+                engine_options["agent"]["enabled"] = bool(agent_config["enabled"])
+                
+        logger.info(f"修正后的engine_options: {engine_options}")
+        
+        obj = cls.model_validate(engine_options)
         obj._db_chat_engine = db_chat_engine
         obj._db_llm = db_chat_engine.llm
         obj._db_fast_llm = db_chat_engine.fast_llm
         obj._db_reranker = db_chat_engine.reranker
+        
+        # 打印关键配置信息
+        logger.info(f"Agent配置: enabled={obj.agent.enabled}, 工具: {obj.agent.enabled_tools}")
+        logger.info(f"知识库配置: {obj.knowledge_base}")
+        logger.info(f"知识图谱配置: enabled={obj.knowledge_graph.enabled}")
+        logger.info(f"数据库配置: enabled={obj.database.enabled}")
+        logger.info(f"========== 引擎配置加载完成 ==========")
+        
         return obj
 
     def get_llama_llm(self, session: Session) -> LLM:

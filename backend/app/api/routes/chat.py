@@ -1,7 +1,8 @@
 import logging
 from uuid import UUID
-from typing import List, Optional, Annotated
+from typing import List, Optional, Annotated, Dict, Any
 from http import HTTPStatus
+import json
 
 from pydantic import (
     BaseModel,
@@ -39,6 +40,44 @@ from app.exceptions import InternalServerError
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# 添加一个用于调试的函数，打印引擎配置信息，特别是agent相关的配置
+def print_engine_config_debug_info(engine_name: str, session: SessionDep) -> None:
+    """
+    打印引擎配置调试信息
+    
+    参数:
+        engine_name: 聊天引擎名称
+        session: 数据库会话
+    """
+    try:
+        from app.rag.chat.config import ChatEngineConfig
+        from app.repositories import chat_engine_repo
+        
+        logger.info(f"==================== 引擎调试信息 ====================")
+        # 获取数据库中的引擎记录
+        db_engine = chat_engine_repo.get_engine_by_name(session, engine_name) or chat_engine_repo.get_default_engine(session)
+        
+        if not db_engine:
+            logger.warning(f"找不到引擎: {engine_name}，也没有默认引擎")
+            return
+            
+        logger.info(f"数据库中的引擎记录: ID={db_engine.id}, name={db_engine.name}, is_default={db_engine.is_default}")
+        
+        # 打印原始的engine_options以便调试
+        agent_config = db_engine.engine_options.get("agent", {})
+        logger.info(f"Agent原始配置: {json.dumps(agent_config, ensure_ascii=False)}")
+        
+        # 加载引擎配置检查agent状态
+        engine_config = ChatEngineConfig.load_from_db(session, engine_name)
+        logger.info(f"加载后的Agent配置: enabled={engine_config.agent.enabled}, tools={engine_config.agent.enabled_tools}")
+        
+        # 检查引擎配置中的agent部分的完整性
+        agent_opts = engine_config.agent.model_dump() if hasattr(engine_config.agent, "model_dump") else vars(engine_config.agent)
+        logger.info(f"Agent配置完整内容: {json.dumps(agent_opts, ensure_ascii=False)}")
+        logger.info(f"==================== 引擎调试信息结束 ====================")
+    except Exception as e:
+        logger.error(f"打印引擎配置调试信息时出错: {e}")
 
 
 class ChatRequest(BaseModel):
@@ -97,6 +136,7 @@ def chats(
 
     处理用户的聊天请求，创建新的聊天会话或继续已有会话，
     并返回系统的回复。支持流式响应和非流式响应。
+    根据引擎配置自动选择使用Agent模式或传统工作流模式。
 
     参数:
         request: FastAPI请求对象，用于获取来源和浏览器ID
@@ -114,33 +154,44 @@ def chats(
     origin = request.headers.get("Origin") or request.headers.get("Referer")
     browser_id = request.state.browser_id
 
+    logger.info(f"收到聊天请求: engine={chat_request.chat_engine}, chat_id={chat_request.chat_id}, stream={chat_request.stream}")
+    logger.info(f"使用浏览器ID: {browser_id}, 来源: {origin}")
+    
+    # 添加引擎配置调试信息打印
+    print_engine_config_debug_info(chat_request.chat_engine, session)
+
     try:
-        # 创建聊天流程对象
-        chat_flow = ChatFlow(
+        # 使用chat函数处理请求，它会根据配置自动选择使用Agent或传统流程
+        from app.rag.chat.chat_service import chat
+
+        chat_generator = chat(
             db_session=session,
             user=user,
             browser_id=browser_id,
             origin=origin,
-            chat_id=chat_request.chat_id,
             chat_messages=chat_request.messages,
             engine_name=chat_request.chat_engine,
+            chat_id=chat_request.chat_id,
         )
 
         # 根据请求类型返回流式响应或非流式响应
         if chat_request.stream:
+            logger.info("使用流式响应")
             return StreamingResponse(
-                chat_flow.chat(),
+                chat_generator,
                 media_type="text/event-stream",
                 headers={
                     "X-Content-Type-Options": "nosniff",
                 },
             )
         else:
-            return get_final_chat_result(chat_flow.chat())
+            logger.info("使用非流式响应")
+            return get_final_chat_result(chat_generator)
     except HTTPException as e:
+        logger.error(f"处理聊天请求时发生HTTP异常: {e}")
         raise e
     except Exception as e:
-        logger.exception(e)
+        logger.exception(f"处理聊天请求时发生未知异常: {e}")
         raise InternalServerError()
 
 

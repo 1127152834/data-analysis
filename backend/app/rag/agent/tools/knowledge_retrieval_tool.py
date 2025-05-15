@@ -8,7 +8,7 @@ import logging
 from typing import Dict, List, Optional, Any
 
 from llama_index.core.schema import NodeWithScore
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from sqlmodel import Session
 
 from app.rag.chat.retrieve.retrieve_flow import RetrieveFlow
@@ -28,7 +28,7 @@ class KnowledgeRetrievalTool(BaseTool):
         self,
         db_session: Session,
         engine_config: ChatEngineConfig,
-        description: str = "检索与用户问题相关的知识库内容",
+        description: str = "从知识库中检索与用户问题相关的内容",
     ):
         """
         初始化知识检索工具
@@ -52,8 +52,13 @@ class KnowledgeRetrievalTool(BaseTool):
             knowledge_bases=self.knowledge_bases,
         )
         
-        name = "knowledge_retrieval"
-        super().__init__(name=name, description=description)
+        # 创建ToolMetadata对象并直接设置到self._metadata
+        self._metadata = ToolMetadata(name="knowledge_retrieval", description=description)
+    
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息"""
+        return self._metadata
     
     def _node_to_dict(self, node: NodeWithScore) -> Dict:
         """
@@ -86,10 +91,14 @@ class KnowledgeRetrievalTool(BaseTool):
         logger.info(f"执行知识检索: {query_str}")
         try:
             # 执行检索
+            rerank = False
+            if hasattr(self.engine_config.vector_search, 'reranker') and self.engine_config.vector_search.reranker:
+                rerank = self.engine_config.vector_search.reranker.enabled
+            
             retrieval_results = self.retrieve_flow.retrieve(
                 query_str=query_str,
                 top_k=top_k,
-                rerank=self.engine_config.vector_search.reranking,
+                rerank=rerank,
             )
             
             # 转换结果为前端友好格式

@@ -1,5 +1,6 @@
 from http import HTTPStatus  # HTTP状态码
 import logging  # 日志记录
+import json  # 用于JSON处理
 
 from typing import Generator, List, Optional
 from uuid import UUID
@@ -25,7 +26,7 @@ from app.models import (
 )
 from app.models.recommend_question import RecommendQuestion
 from app.rag.chat.retrieve.retrieve_flow import RetrieveFlow, SourceDocument
-from app.rag.chat.stream_protocol import ChatEvent
+from app.rag.chat.stream_protocol import ChatEvent, ChatStreamMessagePayload
 from app.rag.retrievers.knowledge_graph.schema import (
     KnowledgeGraphRetrievalResult,
     StoredKnowledgeGraph,
@@ -68,47 +69,102 @@ def get_final_chat_result(
     generator: Generator[ChatEvent | str, None, None],
 ) -> ChatResult:
     """
-    从聊天事件流中提取最终结果
-    参数：
-        generator: 聊天事件生成器，包含文本片段、来源文档等事件
-    返回：
-        ChatResult: 结构化的最终聊天结果
-    处理流程：
-        1. 遍历事件流
-        2. 根据事件类型收集不同数据
-        3. 遇到错误事件时抛出异常
-        4. 返回整合后的结果对象
+    从生成器中获取最终的聊天结果
+    
+    从事件生成器中提取最终的聊天结果，包括内容、来源信息等。
+    
+    参数:
+        generator: 聊天事件生成器
+        
+    返回:
+        ChatResult: 最终的聊天结果
     """
-    trace, sources, content = None, [], ""
-    chat_id, message_id = None, None
+    content = ""
+    sources = []
+    trace = ""
+    chat_id = None
+    message_id = None
 
-    # 遍历事件流
-    for m in generator:
-        if not isinstance(m, ChatEvent):
+    # 提取事件中的信息
+    for event in generator:
+        if isinstance(event, str):
+            # 直接处理字符串事件
+            content += event
             continue
 
-        # 处理不同事件类型
-        if m.event_type == ChatEventType.MESSAGE_ANNOTATIONS_PART:
-            if m.payload.state == ChatMessageSate.SOURCE_NODES:
-                sources = m.payload.context  # 收集来源文档
-        elif m.event_type == ChatEventType.TEXT_PART:
-            content += m.payload  # 拼接消息内容
-        elif m.event_type == ChatEventType.DATA_PART:
-            chat_id = m.payload.chat.id  # 获取聊天ID
-            message_id = m.payload.assistant_message.id  # 获取消息ID
-            trace = m.payload.assistant_message.trace_url  # 获取追踪链接
-        elif m.event_type == ChatEventType.ERROR_PART:
-            raise HTTPException(  # 抛出异常
+        # 处理不同类型的事件
+        try:
+            if event.event_type == ChatEventType.TEXT_PART:
+                # 提取文本内容
+                if isinstance(event.payload, ChatStreamMessagePayload):
+                    content += event.payload.message
+                # 处理JSON字符串
+                elif isinstance(event.payload, str):
+                    try:
+                        payload = json.loads(event.payload)
+                        if "message" in payload:
+                            content += payload["message"]
+                        elif "chat_id" in payload and "message_id" in payload:
+                            # 这里处理原本ID_PART的情况
+                            chat_id = payload["chat_id"]
+                            message_id = payload["message_id"]
+                        else:
+                            content += event.payload
+                    except:
+                        content += str(event.payload)
+                else:
+                    # 其他情况
+                    content += str(event.payload)
+            elif event.event_type == ChatEventType.DATA_PART:
+                # 提取数据部分
+                try:
+                    payload = json.loads(event.payload)
+                    if "sources" in payload:
+                        for source in payload["sources"]:
+                            doc = SourceDocument(
+                                page_content=source.get("text", ""),
+                                metadata=source.get("metadata", {}),
+                            )
+                            sources.append(doc)
+                    elif "chat" in payload and "assistant_message" in payload:
+                        # 处理原来包含ID和trace信息的数据部分
+                        chat_id = payload["chat"].get("id")
+                        message_id = payload["assistant_message"].get("id")
+                        trace = payload["assistant_message"].get("trace_url")
+                except Exception as e:
+                    logger.warning(f"解析DATA_PART事件失败: {str(e)}")
+            elif event.event_type == ChatEventType.MESSAGE_ANNOTATIONS_PART:
+                # 提取注释部分，可能包含源文档
+                if hasattr(event.payload, "state") and event.payload.state == ChatMessageSate.SOURCE_NODES:
+                    if hasattr(event.payload, "context"):
+                        sources = event.payload.context
+            elif event.event_type == ChatEventType.ERROR_PART:
+                # 处理错误
+                logger.error(f"收到错误事件: {event.payload}")
+                raise HTTPException(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail=m.payload,
+                    detail=str(event.payload),
             )
-
+        except Exception as e:
+            logger.warning(f"处理事件失败: {str(e)}")
+    
+    # 确保chat_id和message_id已设置
+    if not chat_id or not message_id:
+        # 如果ID信息不存在，使用临时值
+        logger.warning("聊天结果中缺少必要的ID信息，使用临时值")
+        if not chat_id:
+            import uuid
+            chat_id = uuid.uuid4()
+        if not message_id:
+            message_id = 0
+    
+    # 返回最终结果
     return ChatResult(
         chat_id=chat_id,
         message_id=message_id,
+        content=content,
         trace=trace,
         sources=sources,
-        content=content,
     )
 
 
@@ -451,7 +507,11 @@ def is_agent_mode_enabled(engine_config: ChatEngineConfig) -> bool:
         bool: 是否启用Agent模式
     """
     # 从配置中读取是否启用Agent模式
-    return engine_config.agent.enabled
+    enabled = engine_config.agent.enabled
+    logger.info(f"==========> Agent模式配置检查: agent.enabled = {enabled} <==========")
+    # 打印完整的agent配置，帮助排查问题
+    logger.info(f"==========> Agent完整配置: {engine_config.agent} <==========")
+    return enabled
 
 def chat_with_agent(
     db_session: Session,
@@ -477,6 +537,7 @@ def chat_with_agent(
     返回:
         Generator[ChatEvent, None, None]: 聊天事件生成器
     """
+    logger.info(f"==========> 进入chat_with_agent函数，即将创建AutoFlowAgent实例 <==========")
     # 创建AutoFlowAgent实例
     agent = create_agent_chat_flow(
         db_session=db_session,
@@ -488,9 +549,35 @@ def chat_with_agent(
         chat_id=chat_id,
     )
     
+    logger.info(f"==========> AutoFlowAgent创建成功，可用工具: {[tool.metadata.name for tool in agent.tools]} <==========")
     # 使用Agent进行聊天
-    for event in agent.chat():
-        yield event
+    logger.info(f"==========> 开始使用Agent聊天 <==========")
+    event_counter = 0
+    
+    try:
+        for event in agent.chat():
+            event_counter += 1
+            frontend_type = ChatEventType.get_frontend_event_type(event.event_type)
+            logger.info(f"Agent事件 #{event_counter}: 类型={event.event_type}, 前端类型={frontend_type}")
+            
+            # 增强调试，只记录少量payload以避免日志过大
+            if hasattr(event, 'payload') and event.payload:
+                if isinstance(event.payload, str):
+                    payload_preview = event.payload[:50] + "..." if len(event.payload) > 50 else event.payload
+                else:
+                    try:
+                        payload_preview = str(event.payload)[:50] + "..." if len(str(event.payload)) > 50 else str(event.payload)
+                    except:
+                        payload_preview = "[无法显示]"
+                logger.debug(f"事件 #{event_counter} payload: {payload_preview}")
+            
+            yield event
+            
+        logger.info(f"==========> Agent聊天完成，总共产生 {event_counter} 个事件 <==========")
+    except Exception as e:
+        logger.error(f"Agent聊天过程中发生错误: {e}", exc_info=True)
+        # 重新抛出异常，让上层处理
+        raise
 
 # 添加新函数，用于处理聊天请求，根据配置决定使用原有流程或Agent模式
 def chat(
@@ -518,11 +605,16 @@ def chat(
         Generator[ChatEvent, None, None]: 聊天事件生成器
     """
     # 加载引擎配置
+    logger.info(f"==========> chat函数开始, 加载引擎配置: engine_name={engine_name} <==========")
     engine_config = ChatEngineConfig.load_from_db(db_session, engine_name)
+    logger.info(f"==========> 引擎配置加载成功: {engine_config.get_db_chat_engine().name} <==========")
     
     # 检查是否使用Agent模式
-    if is_agent_mode_enabled(engine_config):
-        logger.info(f"使用Agent模式进行聊天 (engine: {engine_name})")
+    agent_enabled = is_agent_mode_enabled(engine_config)
+    logger.info(f"==========> 模式检查结果: agent_enabled={agent_enabled} <==========")
+    
+    if agent_enabled:
+        logger.info(f"==========> 使用Agent模式进行聊天 (engine: {engine_name}) <==========")
         # 使用Agent模式
         for event in chat_with_agent(
             db_session=db_session,
@@ -535,7 +627,7 @@ def chat(
         ):
             yield event
     else:
-        logger.info(f"使用传统模式进行聊天 (engine: {engine_name})")
+        logger.info(f"==========> 使用传统模式进行聊天 (engine: {engine_name}) <==========")
         # 使用原有流程
         from app.rag.chat.chat_flow import ChatFlow
         
@@ -551,3 +643,95 @@ def chat(
         
         for event in chat_flow.chat():
             yield event
+
+class ChatService:
+    def __init__(
+        self,
+        db_session: Session,
+        user: User,
+        browser_id: str,
+        origin: str,
+        chat_messages: List[ChatMessage],
+        engine_name: str = "default",
+        chat_id: Optional[UUID] = None,
+    ):
+        self.db_session = db_session
+        self.user = user
+        self.browser_id = browser_id
+        self.origin = origin
+        self.chat_messages = chat_messages
+        self.engine_name = engine_name
+        self.chat_id = chat_id
+        
+        self.engine_config = ChatEngineConfig.load_from_db(db_session, engine_name)
+        logger.info(f"========== ChatService初始化 ==========")
+        logger.info(f"引擎名称: {engine_name}, 聊天ID: {chat_id}")
+        logger.info(f"Agent配置: enabled={self.engine_config.agent.enabled}, tools={self.engine_config.agent.enabled_tools}")
+        logger.info(f"知识图谱配置: enabled={self.engine_config.knowledge_graph.enabled}")
+        logger.info(f"数据库配置: enabled={self.engine_config.database.enabled}")
+        logger.info(f"========== 配置加载完成 ==========")
+        
+    def process_message(self, *args, **kwargs):
+        # 添加日志记录处理开始
+        logger.info(f"========== 开始处理消息 ==========")
+        logger.info(f"Agent模式配置状态: enabled={self.engine_config.agent.enabled}, tools={self.engine_config.agent.enabled_tools}")
+        
+        # 查找模式判断的位置并添加日志
+        if self.engine_config.agent.enabled:
+            logger.info("======> 将使用Agent模式处理消息")
+        else:
+            logger.info("======> 将使用传统工作流模式处理消息")
+        
+        # ... existing code ...
+    
+    def _process_with_agent(self, *args, **kwargs):
+        # 如果有这个方法，添加详细日志
+        logger.info(f"========== 使用Agent模式处理 ==========")
+        logger.info(f"用户问题: {self.user_question}")
+        
+        try:
+            # 记录Agent初始化
+            logger.info(f"开始初始化AutoFlowAgent...")
+            agent = AutoFlowAgent(
+                db_session=self.db_session,
+                user=self.user,
+                browser_id=self.browser_id,
+                origin=self.origin,
+                chat_messages=self.chat_messages,
+                engine_name=self.engine_name,
+                chat_id=self.chat_id,
+            )
+            logger.info(f"AutoFlowAgent初始化成功，已加载工具: {[tool.metadata.name for tool in agent.tools]}")
+            
+            # ... 执行Agent逻辑 ...
+            logger.info(f"开始执行Agent处理...")
+            
+            # ... existing code ...
+            
+        except Exception as e:
+            logger.error(f"Agent模式处理失败: {e}", exc_info=True)
+            logger.warning(f"回退到传统工作流模式...")
+            # 可能有回退逻辑
+            
+        # ... existing code ...
+        
+        logger.info(f"========== Agent处理完成 ==========")
+        
+    def _generate_response(self, *args, **kwargs):
+        # 如果有这个方法，添加日志标记开始
+        logger.info(f"========== 开始生成响应 ==========")
+        logger.info(f"当前模式: {'Agent模式' if self.engine_config.agent.enabled else '传统工作流模式'}")
+        
+        # ... existing code ...
+        
+        # 在关键判断位置添加日志
+        if self.engine_config.agent.enabled:
+            logger.info("使用Agent模式生成响应...")
+            # Agent相关代码...
+        else:
+            logger.info("使用传统工作流生成响应...")
+            # 传统工作流代码...
+        
+        # ... existing code ...
+        
+        logger.info(f"========== 响应生成完成 ==========")

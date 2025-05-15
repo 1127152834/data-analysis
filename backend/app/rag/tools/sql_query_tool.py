@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any, Tuple, Union
 from sqlmodel import Session
 
 from llama_index.core.schema import Document, NodeWithScore
-from llama_index.core.tools.types import BaseTool
+from llama_index.core.tools.types import BaseTool, ToolMetadata
 from llama_index.core.llms.llm import LLM
 from llama_index.core.query_engine import NLSQLTableQueryEngine, RouterQueryEngine
 from llama_index.core import SQLDatabase
@@ -248,7 +248,6 @@ class SQLQueryTool(BaseTool):
         db_session: Session,
         config: ChatEngineConfig,
         llm: LLM,
-        description: str = "通过SQL查询数据库并返回结果",
         use_llama_index: bool = True  # 是否使用LlamaIndex引擎
     ):
         """
@@ -258,19 +257,31 @@ class SQLQueryTool(BaseTool):
             db_session: 数据库会话对象
             config: 聊天引擎配置
             llm: 语言模型实例
-            description: 工具描述
             use_llama_index: 是否使用LlamaIndex的NLSQLTableQueryEngine
         """
         self.db_session = db_session
         self.config = config
         self.llm = llm
+        self.connections_map: Dict[int, DatabaseConnection] = {}
+        self.use_llama_index = use_llama_index
+        
         self.cache = {}  # 简单的表结构缓存
         self.connectors: Dict[int, BaseConnector] = {}  # 连接器缓存
         self.llama_index_engines: Dict[int, NLSQLTableQueryEngine] = {}  # LlamaIndex引擎缓存
         self.sqlalchemy_engines: Dict[int, Tuple[Any, str]] = {}  # SQLAlchemy引擎缓存 (engine, url)
-        self.use_llama_index = use_llama_index
-        
-        super().__init__(name="sql_query", description=description)
+
+        # 为此类添加一个 _metadata 属性，即使它不直接作为 Agent 工具，
+        # 以防止 LlamaIndex 内部某些地方期望它有元数据时出错。
+        # Adapter (SQLQueryToolAdapter) 负责提供给 Agent 的正确元数据。
+        self._metadata = ToolMetadata(
+            name="internal_sql_query_engine",
+            description="Internal engine for executing SQL queries and NL-to-SQL. Not for direct agent use."
+        )
+
+    @property
+    def metadata(self) -> ToolMetadata:
+        """返回工具的元数据信息。"""
+        return self._metadata
     
     def _get_connector(self, connection: DatabaseConnection) -> BaseConnector:
         """
