@@ -4,9 +4,9 @@ from datetime import datetime
 
 from sqlmodel import Session
 from llama_index.core import KnowledgeGraphIndex, StorageContext
-from llama_index.graph_stores.simple import SimpleGraphStore
+from llama_index.core.graph_stores.simple import SimpleGraphStore
 
-from app.core.database import get_session
+from app.core.db import get_db_session
 from app.models.database_connection import DatabaseConnection
 from app.repositories import database_connection_repo
 
@@ -55,7 +55,7 @@ def index_database_metadata_to_kg(persist_dir: Optional[str] = "./kg_storage/db_
         )
         
         # 获取所有活跃的数据库连接
-        with get_session() as session:
+        with get_db_session() as session:
             db_connections = database_connection_repo.get_all_active(session)
             
         total_triplets = 0

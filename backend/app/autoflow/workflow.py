@@ -4,7 +4,9 @@ import asyncio
 from functools import wraps
 import logging
 
+# 使用新的事件系统导入所有事件类型
 from .events import Event, StartEvent, StopEvent, StreamEvent, ResponseEvent
+
 from .context import Context
 
 # 添加专用日志器
@@ -222,11 +224,16 @@ def step(func=None, event_type=None):
 class Workflow:
     """工作流引擎，负责管理和执行工作流步骤"""
     
-    def __init__(self):
+    def __init__(self, agent=None):
         self.handlers: Dict[Type[Event], Callable] = {}
         self._event_queue = asyncio.Queue()
         self._is_running = False
+        self.agent = agent
         logger.info("【工作流】初始化工作流引擎")
+        
+        # 如果提供了agent，自动添加agent的process方法作为事件处理器
+        if self.agent:
+            logger.info(f"【工作流】集成Agent: {self.agent.name}")
     
     def add_step(self, event_type: Type[Event], handler: Callable):
         """添加工作流步骤"""
@@ -294,6 +301,28 @@ class Workflow:
         
         logger.debug(f"【工作流】已访问的事件类型: {[t.__name__ for t in visited]}")
         return visited
+
+    async def process(self, ctx: Context, event: Event) -> Union[Event, AsyncGenerator[Event, None]]:
+        """处理事件，集成Agent的处理逻辑
+        
+        参数:
+            ctx: 上下文对象
+            event: 输入事件
+            
+        返回:
+            Event或事件生成器
+        """
+        logger.info(f"【工作流】开始处理事件: {type(event).__name__}")
+        
+        # 如果有集成的Agent，则委托给Agent处理
+        if self.agent:
+            logger.info(f"【工作流】委托给Agent处理: {self.agent.name}")
+            return await self.agent.process(ctx, event)
+        
+        # 否则使用传统的工作流处理逻辑
+        logger.info("【工作流】使用传统工作流处理逻辑")
+        runner = WorkflowRunner(self, ctx, event)
+        return await runner.run()
 
 class WorkflowRunner:
     """工作流运行器，负责执行具体工作流实例"""

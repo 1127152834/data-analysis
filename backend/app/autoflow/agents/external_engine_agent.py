@@ -19,7 +19,12 @@ class ExternalEngineAgent(BaseAgent):
     """外部引擎代理，负责调用外部引擎处理查询"""
     
     def __init__(self, db_session: Session = None, engine_config: Any = None, llm: LLM = None, fast_llm: LLM = None):
-        super().__init__(db_session, engine_config)
+        super().__init__(
+            name="ExternalEngineAgent",
+            description="负责调用外部引擎处理查询的智能体",
+            db_session=db_session, 
+            engine_config=engine_config
+        )
         self.llm = llm
         self.fast_llm = fast_llm
         # 从engine_config获取外部引擎配置
@@ -56,13 +61,13 @@ class ExternalEngineAgent(BaseAgent):
     async def _call_external_engine(self, goal: str, response_format: dict, db_user_message: Any, db_assistant_message: Any):
         """调用外部引擎处理查询"""
         if not self.external_engine_config:
-            self._emit_event("ERROR_PART", "未配置外部引擎")
+            self.emit_error("未配置外部引擎")
             return
             
         # 获取外部引擎API地址
         stream_chat_api_url = self.external_engine_config.stream_chat_api_url
         if not stream_chat_api_url:
-            self._emit_event("ERROR_PART", "未配置外部引擎API地址")
+            self.emit_error("未配置外部引擎API地址")
             return
             
         try:
@@ -74,10 +79,7 @@ class ExternalEngineAgent(BaseAgent):
             }
             
             # 发送状态更新
-            self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                "state": "EXTERNAL_ENGINE_CALL",
-                "display": "调用外部引擎处理..."
-            })
+            self.emit_info("调用外部引擎处理...")
             
             # 发送请求并处理流式响应
             logger.info(f"请求外部引擎API: {stream_chat_api_url}")
@@ -97,7 +99,7 @@ class ExternalEngineAgent(BaseAgent):
                 if chunk.startswith("0:"):
                     word = json.loads(chunk[2:])
                     response_text += word
-                    self._emit_event("TEXT_PART", word)
+                    self.emit_text(word)
                 # 处理状态信息 (8:表示状态信息)
                 elif chunk.startswith("8:"):
                     try:
@@ -108,7 +110,7 @@ class ExternalEngineAgent(BaseAgent):
                         logger.error(f"解析状态信息出错: {e}")
                 # 其他类型的消息直接转发
                 else:
-                    self._emit_event("TEXT_PART", chunk)
+                    self.emit_text(chunk)
             
             # 更新消息
             now = datetime.now()
@@ -141,12 +143,10 @@ class ExternalEngineAgent(BaseAgent):
                 db_user_message["finished_at"] = now.isoformat()
             
             # 发送完成状态
-            self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                "state": "FINISHED"
-            })
+            self.emit_info("处理完成")
             
             # 发送最终数据
-            self._emit_event("DATA_PART", {
+            self.emit_text({
                 "chat": self.db_chat_obj,
                 "user_message": db_user_message,
                 "assistant_message": db_assistant_message
@@ -156,4 +156,4 @@ class ExternalEngineAgent(BaseAgent):
             # 处理错误
             error_msg = f"调用外部引擎出错: {str(e)}"
             logger.error(error_msg)
-            self._emit_event("ERROR_PART", error_msg) 
+            self.emit_error(error_msg) 

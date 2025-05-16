@@ -1,6 +1,6 @@
 from .base_agent import BaseAgent
 from .input_processor import InputProcessorAgent
-from .knowledge_agent import KnowledgeAgent
+from .qa_agent import QAAgent
 from .reasoning_agent import ReasoningAgent
 from .response_agent import ResponseAgent
 from .external_engine_agent import ExternalEngineAgent
@@ -8,7 +8,7 @@ from .external_engine_agent import ExternalEngineAgent
 __all__ = [
     'BaseAgent',
     'InputProcessorAgent',
-    'KnowledgeAgent',
+    'QAAgent',
     'ReasoningAgent',
     'ResponseAgent',
     'ExternalEngineAgent'

@@ -1,4 +1,6 @@
 import enum
+from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field
 
 # # 事件类型到前端SSE事件名称的集中映射
 # CHAT_EVENT_TYPE_TO_FRONTEND = {
@@ -99,3 +101,14 @@ class ChatMessageSate(int, enum.Enum):
     FINISHED = 9
     QUERY_OPTIMIZATION = 10  # 查询优化阶段
     EXTERNAL_ENGINE_CALL = 11  # 外部引擎调用
+
+
+# SQL执行配置类
+class SQLExecutionConfig(BaseModel):
+    """SQL执行配置"""
+    llm: Optional[str] = "gpt-3.5-turbo"
+    max_tokens: int = 4096
+    temperature: float = 0.2
+    top_p: float = 0.95
+    model_name: Optional[str] = None
+    debug: bool = False

@@ -15,7 +15,12 @@ class ReasoningAgent(BaseAgent):
     """推理Agent，负责分析信息、推理和决策"""
     
     def __init__(self, db_session: Session = None, engine_config: Any = None, llm: LLM = None, fast_llm: LLM = None):
-        super().__init__(db_session, engine_config)
+        super().__init__(
+            name="ReasoningAgent",
+            description="负责分析信息、推理和决策的智能体",
+            db_session=db_session, 
+            engine_config=engine_config
+        )
         self.llm = llm
         self.fast_llm = fast_llm
         # 初始化工具
@@ -62,10 +67,7 @@ class ReasoningAgent(BaseAgent):
         
         # 通知前端开始推理
         self.logger.info("【ReasoningAgent】通知前端开始推理")
-        self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-            "state": "REASONING",
-            "display": "分析检索到的知识..."
-        })
+        self.emit_info("分析检索到的知识...")
         
         # 构建推理上下文
         self.logger.info("【ReasoningAgent】开始构建知识上下文")
@@ -81,10 +83,7 @@ class ReasoningAgent(BaseAgent):
         
         # 通知前端推理完成
         self.logger.info("【ReasoningAgent】通知前端推理完成")
-        self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-            "state": "REASONING_COMPLETED",
-            "display": "知识分析完成"
-        })
+        self.emit_info("知识分析完成")
         
         # 返回推理事件
         self.logger.info("【ReasoningAgent】返回ReasoningEvent事件")
@@ -107,10 +106,7 @@ class ReasoningAgent(BaseAgent):
         
         # 通知前端开始生成回答
         self.logger.info("【ReasoningAgent】通知前端开始生成回答")
-        self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-            "state": "GENERATE_ANSWER",
-            "display": "生成回答..."
-        })
+        self.emit_info("生成回答...")
         
         # 检查是否需要使用工具
         self.logger.info("【ReasoningAgent】检查是否需要使用工具")
@@ -125,10 +121,7 @@ class ReasoningAgent(BaseAgent):
         if tool_calls:
             self.logger.info(f"【ReasoningAgent】需要使用工具，将执行 {len(tool_calls)} 个工具调用")
             # 通知前端工具调用
-            self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                "state": "TOOL_CALLING",
-                "display": "正在使用工具..."
-            })
+            self.emit_info("正在使用工具...")
             
             # 执行工具调用
             try:
@@ -141,10 +134,7 @@ class ReasoningAgent(BaseAgent):
                 await ctx.set("tool_results", tool_results)
                 
                 # 通知前端工具调用结果
-                self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                    "state": "TOOL_RESULTS",
-                    "context": tool_results
-                })
+                self.emit_info(f"工具调用结果:\n{chr(10).join([f'{result.get('tool_name', '未知工具')} - {result.get('result', '无结果')}' for result in tool_results])}")
             except Exception as e:
                 self.logger.error(f"【ReasoningAgent错误】工具调用执行失败: {str(e)}", exc_info=True)
                 tool_results = [{"tool_name": "error", "status": "error", "result": f"工具调用失败: {str(e)}"}]
@@ -170,10 +160,7 @@ class ReasoningAgent(BaseAgent):
                 self.logger.info(f"【ReasoningAgent】非流式生成带工具的回答完成，回答长度: {len(answer)}")
                 
                 # 通知前端回答生成完成
-                self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                    "state": "FINISHED",
-                    "display": "回答生成完成"
-                })
+                self.emit_info("回答生成完成")
                 
                 # 更新结果到上下文
                 await ctx.set("answer", answer)
@@ -204,10 +191,7 @@ class ReasoningAgent(BaseAgent):
                 self.logger.info(f"【ReasoningAgent】非流式生成回答完成，回答长度: {len(answer)}")
                 
                 # 通知前端回答生成完成
-                self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                    "state": "FINISHED",
-                    "display": "回答生成完成"
-                })
+                self.emit_info("回答生成完成")
                 
                 # 更新结果到上下文
                 await ctx.set("answer", answer)
@@ -665,19 +649,13 @@ class ReasoningAgent(BaseAgent):
         reasoning_result = ev.reasoning_result
         
         # 通知前端开始生成回答
-        self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-            "state": "GENERATE_ANSWER",
-            "display": "生成回答..."
-        })
+        self.emit_info("生成回答...")
         
         # 生成回答（简化版，不使用工具）
         answer = await self._generate_answer(refined_question, reasoning_result)
         
         # 通知前端回答生成完成
-        self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-            "state": "FINISHED",
-            "display": "回答生成完成"
-        })
+        self.emit_info("回答生成完成")
         
         # 更新结果到上下文
         await ctx.set("answer", answer)

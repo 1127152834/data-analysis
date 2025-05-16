@@ -13,3 +13,17 @@ except ImportError:
 # 设置环境变量，启用LiteLLM本地模型成本映射功能
 # 这允许系统跟踪本地部署的大型语言模型的使用成本
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
+def init_autoflow(db_session=None, engine_config=None):
+    """初始化AutoFlow系统"""
+    from app.autoflow.tools.init import register_default_tools
+    
+    # 注册默认工具
+    registry = register_default_tools(db_session, engine_config)
+    
+    # 日志记录已注册的工具
+    from logging import getLogger
+    logger = getLogger("app")
+    logger.info(f"AutoFlow工具已注册: {', '.join(registry.list_tools())}")
+    
+    return registry

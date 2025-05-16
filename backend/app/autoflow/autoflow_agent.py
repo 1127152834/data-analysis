@@ -11,9 +11,9 @@ from app.rag.chat.stream_protocol import ChatEvent
 from app.rag.types import ChatEventType, ChatMessageSate
 
 from .context import Context
-from .events import Event, StartEvent, StopEvent, PrepEvent, ReasoningEvent, ResponseEvent, ExternalEngineEvent
+from .events import Event, StartEvent, StopEvent, PrepEvent, ReasoningEvent, ResponseEvent, ExternalEngineEvent, KnowledgeEvent
 from .agents.input_processor import InputProcessorAgent
-from .agents.knowledge_agent import KnowledgeAgent
+from .agents.qa_agent import QAAgent
 from .agents.reasoning_agent import ReasoningAgent
 from .agents.response_agent import ResponseAgent
 from .agents.external_engine_agent import ExternalEngineAgent
@@ -22,15 +22,17 @@ from .workflow import Workflow
 class AutoFlowAgent:
     """基于事件驱动的工作流智能体，实现模块化、可扩展的聊天流程"""
     
-    def __init__(self, db_session: Session = None, engine_config: Any = None):
+    def __init__(self, db_session: Session = None, engine_config: Any = None, tool_registry = None):
         """初始化工作流智能体
         
         参数:
             db_session: 数据库会话，用于数据存储和检索
             engine_config: 引擎配置，包含LLM和检索器配置
+            tool_registry: 工具注册表，提供可使用的工具集合
         """
         self.db_session = db_session
         self.engine_config = engine_config
+        self.tool_registry = tool_registry
         
         # 初始化工作流
         self.workflow = Workflow()
@@ -56,7 +58,7 @@ class AutoFlowAgent:
         
         # 初始化各个专用智能体
         self.input_processor = InputProcessorAgent(db_session, engine_config, self.llm, self.fast_llm)
-        self.knowledge_agent = KnowledgeAgent(db_session, engine_config, self.llm, self.fast_llm)
+        self.qa_agent = QAAgent(db_session, engine_config, self.llm, self.fast_llm, tool_registry)
         self.reasoning_agent = ReasoningAgent(db_session, engine_config, self.llm, self.fast_llm)
         self.response_agent = ResponseAgent(db_session, engine_config, self.llm, self.fast_llm)
         self.external_engine_agent = ExternalEngineAgent(db_session, engine_config, self.llm, self.fast_llm)
@@ -76,8 +78,13 @@ class AutoFlowAgent:
         self.knowledge_index = knowledge_index
         self.kg_index = kg_index
         
-        # 将索引传递给知识智能体
-        self.knowledge_agent.set_indices(knowledge_index, kg_index)
+        # 将索引传递给QA智能体
+        self.qa_agent.set_indices(knowledge_index, kg_index)
+    
+    def set_tool_registry(self, tool_registry):
+        """设置工具注册表"""
+        self.tool_registry = tool_registry
+        self.qa_agent.set_tool_registry(tool_registry)
     
     def _register_workflow_steps(self):
         """注册工作流步骤"""
@@ -90,9 +97,10 @@ class AutoFlowAgent:
             self.workflow.add_step(PrepEvent, self._generate_external_engine_event)
             self.workflow.add_step(ExternalEngineEvent, self.external_engine_agent.process)
         else:
-            # 内部引擎路径
-            self.workflow.add_step(PrepEvent, self.knowledge_agent.process)
-            self.workflow.add_step(ReasoningEvent, self.reasoning_agent.process)
+            # 内部引擎路径 - 使用QA智能体全流程处理
+            self.workflow.add_step(PrepEvent, self.qa_agent.process)
+            self.workflow.add_step(KnowledgeEvent, self.qa_agent.process)
+            self.workflow.add_step(ReasoningEvent, self.qa_agent.process)
             self.workflow.add_step(ResponseEvent, self.response_agent.process)
     
     async def _generate_external_engine_event(self, ctx: Context, event: Event) -> Event:

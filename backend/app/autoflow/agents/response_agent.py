@@ -17,7 +17,12 @@ class ResponseAgent(BaseAgent):
     """响应Agent，负责生成最终回答并处理回调"""
     
     def __init__(self, db_session: Session = None, engine_config: Any = None, llm: LLM = None, fast_llm: LLM = None):
-        super().__init__(db_session, engine_config)
+        super().__init__(
+            name="ResponseAgent",
+            description="负责生成最终回答并处理回调的智能体",
+            db_session=db_session, 
+            engine_config=engine_config
+        )
         self.llm = llm
         self.fast_llm = fast_llm  # 添加fast_llm但不使用，因为ResponseAgent主要生成长文本答案
         self.callback = None
@@ -44,10 +49,7 @@ class ResponseAgent(BaseAgent):
             self.db_chat_obj = await ctx.get("db_chat_obj")
             
             # 通知前端开始生成回答
-            self._emit_event("MESSAGE_ANNOTATIONS_PART", {
-                "state": "GENERATE_ANSWER",
-                "display": "生成最终回答..."
-            })
+            self.emit_info("生成最终回答...")
             
             # 生成最终回答
             answer = await self._generate_answer(
@@ -62,7 +64,7 @@ class ResponseAgent(BaseAgent):
             db_assistant_message = await ctx.get("db_assistant_message")
             
             # 发送最终文本
-            self._emit_event("TEXT_PART", answer)
+            self.emit_text(answer)
             
             # 执行_chat_finish握手
             await self._chat_finish(

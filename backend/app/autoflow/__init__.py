@@ -1,22 +1,27 @@
-from .events import (
-    Event, StartEvent, StopEvent, PrepEvent, 
-    InputEvent, KnowledgeEvent, ReasoningEvent, 
-    ResponseEvent, StreamEvent, ChatEventAdapter
+"""
+Autoflow module initialization.
+This is a temporary workaround until full migration to new event system.
+"""
+
+# When we complete the migration, uncomment this:
+from .events.tool_events import (
+    BaseEvent, ToolCallEvent, ToolResultEvent, StepEndEvent, InfoEvent, ErrorEvent, TextEvent
 )
+from .events.converter import EventConverter
+
 from .context import Context
 from .workflow import Workflow, step
 from .agents import (
     BaseAgent, InputProcessorAgent, 
-    KnowledgeAgent, ReasoningAgent, ResponseAgent,
+    ReasoningAgent, ResponseAgent,
     ExternalEngineAgent
 )
 from .autoflow_agent import AutoFlowAgent
 
 __all__ = [
-    # Events
-    "Event", "StartEvent", "StopEvent", "PrepEvent",
-    "InputEvent", "KnowledgeEvent", "ReasoningEvent",
-    "ResponseEvent", "StreamEvent", "ChatEventAdapter",
+    # Events will be added back later
+    "BaseEvent", "ToolCallEvent", "ToolResultEvent", "StepEndEvent", 
+    "InfoEvent", "ErrorEvent", "TextEvent", "EventConverter",
     
     # Context
     "Context",
@@ -26,10 +31,9 @@ __all__ = [
     
     # Agents
     "BaseAgent", "InputProcessorAgent",
-    "KnowledgeAgent", "ReasoningAgent", "ResponseAgent",
+    "ReasoningAgent", "ResponseAgent",
     "ExternalEngineAgent",
     
     # Main workflow
     "AutoFlowAgent",
-    
 ] 

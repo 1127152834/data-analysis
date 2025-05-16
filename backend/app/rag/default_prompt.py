@@ -535,42 +535,51 @@ Refined standalone question:
 
 # 新增：混合内容（知识库+数据库结果）的回答生成提示词模板
 HYBRID_RESPONSE_SYNTHESIS_PROMPT = """\
-You are an AI assistant with access to both knowledge documents and database query results. Your task is to synthesize information from both sources to provide a comprehensive and accurate answer.
+Current Date: {{current_date}}
 
-### Information Sources
+You are an AI assistant tasked with providing a comprehensive and helpful response to the user's question, using all available information sources.
 
-1. Knowledge Base Documents:
+User Question: {{question}}
+
+Chat History:
+{{chat_history}}
+
+Information Sources:
+1. Tool Results:
+{% for tool_call in tool_calls %}
+--- Tool: {{tool_call.tool_name}} ---
+Parameters: {{tool_call.parameters}}
+Result: {{tool_call.result}}
+Success: {{tool_call.success}}
+{% if not tool_call.success %}Error: {{tool_call.error_message}}{% endif %}
+
+{% endfor %}
+
+2. Knowledge Base Context:
 {{context_str}}
 
-2. Database Query Results:
+3. Database Results:
 {{database_results}}
 
-### Guidelines for Answer Synthesis
+4. Analysis:
+{{reasoning_result}}
 
-1. Integration Priority:
-   - For factual information and specific data points, prioritize database query results
-   - For explanations, concepts, and context, prioritize knowledge documents
-   - When sources conflict, database results generally represent more current information
+Instructions for your response:
+1. Answer the user's question directly and thoroughly
+2. Integrate information from all relevant sources
+3. Prioritize accurate information from tools and knowledge base over general knowledge
+4. Structure your response logically, starting with the most important information
+5. Use markdown formatting for readability (headings, lists, code blocks, etc.)
+6. If there were errors in tool usage, only mention them if relevant to explaining limitations in your answer
+7. If you cannot answer fully, be transparent about what you don't know
+8. Use the same language as the user's question
 
-2. Source Attribution:
-   - Clearly indicate when information comes from database queries versus knowledge documents
-   - Use the footnote syntax provided in the instructions
+Response formatting:
+- Use footnotes to cite sources using the provided knowledge base links
+- Format database citations as: [^n]: [Database: DatabaseName](database://query/id/{database_connection_id})
+- Format tool citations as: [^n]: [Tool: ToolName]()
 
-3. Completeness and Accuracy:
-   - Address all aspects of the user's question
-   - When database results contain multiple records, summarize patterns or trends rather than listing all entries
-   - Present numerical data in a readable format (tables, bullets, etc. as appropriate)
-   - For empty database results, explain the significance (e.g., "No matching records found, which indicates...")
-
-4. Format and Style:
-   - Use the same language as the query
-   - Maintain a helpful, informative tone
-   - Structure the answer logically, typically presenting database findings first, then supporting with knowledge context
-
-### User Question
-{{query_str}}
-
-### Your Answer:
+Your response:
 """
 
 # 新增：推理分析提示词
@@ -622,49 +631,31 @@ Your Reasoning Analysis:
 # 新增：工具使用决策提示词
 TOOL_DECISION_PROMPT = """\
 Current Date: {{current_date}}
----------------------
-Knowledge graph information is below
----------------------
 
-{{graph_knowledges}}
+You are an AI assistant equipped with access to various tools that can help answer user questions more effectively.
 
----------------------
-Context information is below.
----------------------
+Available tools:
+{% for tool in tools %}
+- {{tool.name}}: {{tool.description}}
+{% endfor %}
 
-{{context_str}}
+Given the user's question, determine if any of the available tools should be used to provide a better answer.
 
----------------------
-Available tools are listed below:
----------------------
+User Question: {{question}}
 
-{{tools_description}}
+Chat History:
+{{chat_history}}
 
----------------------
+When making your decision, remember:
+1. Only suggest tools that are directly relevant to answering the question.
+2. If the question can be answered with general knowledge or information already in the conversation, don't suggest unnecessary tool use.
+3. Consider whether using multiple tools in combination would provide a more comprehensive answer.
 
-Task:
-Determine if any of the available tools should be used to better answer the user's question. This decision should be based on the user's question, the retrieved context, and the capabilities of the available tools.
+Step 1: Analyze the user's question in detail.
+Step 2: Consider which (if any) tools would help answer this question effectively.
+Step 3: Provide your response in the following format:
 
-Instructions:
-1. First, analyze whether the existing information is sufficient:
-   - Is the retrieved knowledge comprehensive enough to answer the user's question?
-   - Are there specific data points, calculations, or external information needed?
-   - Would any of the available tools provide valuable additional information?
-
-2. For each potentially useful tool, assess:
-   - Relevance: How directly applicable is this tool to the question?
-   - Value-add: What specific new information would this tool provide?
-   - Necessity: Is this information critical to providing a complete answer?
-
-3. Make a clear decision for each tool:
-   - Return a list in JSON format with decisions about which tools to use
-   - For each tool, include "tool_name", "should_use" (true/false), and "reasoning"
-
-User Question:
-{{query_str}}
-
-Reasoning Analysis So Far:
-{{reasoning_result}}
-
-Your Tool Usage Decision (JSON format):
+DECISION: [YES if tools should be used, NO if not]
+TOOLS: [List of tool names to use, in order of priority, or NONE if no tools needed]
+REASONING: [Brief explanation of your decision, including why certain tools were selected or why no tools are needed]
 """
