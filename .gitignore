@@ -111,7 +111,7 @@ yarn-error.log*
 .temp/
 tmp/
 temp/
-
+__pycache__/
 # 配置文件
 .env
 config.local.js
